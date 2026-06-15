@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenRails V1 - Clearing & Settlement Substrate Dashboard</title>
+  <meta name="description" content="A live interactive visualization and playground for OpenRails V1. Demonstrating EIP-712 off-chain Permission Envelopes, Circle Sponsored Relays, and the STN-Delta buffer recovery engine on the Arc Network.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-content">
+      <div class="logo-area">
+        <span class="logo-pill">OPENRAILS V1</span>
+        <span class="network-badge" id="network-status">Arc Network Simulator</span>
+      </div>
+      <h1 class="main-title">OpenRails V1 Clearinghouse Substrate</h1>
+      <p class="tagline">Intent-Driven Clearing & Settlement Infrastructure for the Machine Economy</p>
+    </div>
+  </header>
+
+  <main class="dashboard-grid">
+    <!-- COLUMN 1: SDK PLAYGROUND & INTENT GENERATION -->
+    <section class="grid-card offchain-sdk" id="sdk-section">
+      <div class="card-header">
+        <div class="header-icon">💻</div>
+        <div>
+          <h2>1. Lepton Agent SDK Runtime</h2>
+          <p class="subtitle">Generate & sign off-chain cryptographic Permission Envelopes</p>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <form id="intent-form" onsubmit="return false;">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="intent-paycard-id">Paycard ID (Bytes32 Hex)</label>
+              <div class="input-with-button">
+                <input type="text" id="intent-paycard-id" placeholder="0x..." readonly>
+                <button type="button" id="btn-generate-id" class="btn-secondary">New ID</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row split">
+            <div class="form-group">
+              <label for="intent-allocation">Total Allocation Pool (USDC)</label>
+              <input type="number" id="intent-allocation" value="1050" min="1" step="any">
+              <span class="input-helper">Includes STN-Delta buffer (e.g. $50.00)</span>
+            </div>
+            <div class="form-group">
+              <label for="intent-velocity">Flow Velocity ($R$ / sec)</label>
+              <input type="number" id="intent-velocity" value="5" min="0.1" step="any">
+              <span class="input-helper">Settlement drip rate in USDC/sec</span>
+            </div>
+          </div>
+
+          <div class="form-row split">
+            <div class="form-group">
+              <label for="intent-recipient">Merchant Address</label>
+              <input type="text" id="intent-recipient" placeholder="0x...">
+            </div>
+            <div class="form-group">
+              <label for="intent-recovery">STN-Delta Recovery Vault</label>
+              <input type="text" id="intent-recovery" placeholder="0x...">
+            </div>
+          </div>
+
+          <div class="form-row split">
+            <div class="form-group">
+              <label for="intent-lifespan">Lifespan Horizon (Seconds)</label>
+              <input type="number" id="intent-lifespan" value="120" min="10">
+            </div>
+            <div class="form-group">
+              <label for="intent-payer-key">Agent Private Key (Off-Chain)</label>
+              <input type="password" id="intent-payer-key" placeholder="Private key hex">
+            </div>
+          </div>
+
+          <button type="button" id="btn-generate-envelope" class="btn-primary w-full">
+            Generate & Sign Permission Envelope
+          </button>
+        </form>
+
+        <div class="envelope-output hidden" id="envelope-output-container">
+          <div class="output-header">
+            <span>Base64 Permission Envelope Payload</span>
+            <button id="btn-copy-envelope" class="btn-text">Copy</button>
+          </div>
+          <div class="code-box-wrapper">
+            <pre><code id="envelope-payload-text" class="jetbrains-mono"></code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COLUMN 2: CIRCLE SPONSORED RELAYER -->
+    <section class="grid-card sponsored-relayer" id="relayer-section">
+      <div class="card-header">
+        <div class="header-icon">🔌</div>
+        <div>
+          <h2>2. Gasless Relayer Gateway</h2>
+          <p class="subtitle">Sponsored meta-transaction via Circle App Kit / Paymaster</p>
+        </div>
+      </div>
+
+      <div class="card-body flex-col justify-between">
+        <div>
+          <div class="info-alert">
+            <p><strong>Gasless Transaction Flow:</strong> The agent submits the off-chain signed envelope to the Gateway. The relayer sponsors the transaction gas, meaning the agent wallet does not need to hold native gas tokens to interact with the contract.</p>
+          </div>
+
+          <div class="form-group">
+            <label for="relayer-input-token">Stateless Base64 Bearer Token</label>
+            <textarea id="relayer-input-token" placeholder="Paste Base64 Permission Envelope here..."></textarea>
+          </div>
+
+          <button type="button" id="btn-submit-relayer" class="btn-accent w-full" disabled>
+            Broadcast Sponsored Transaction to Arc
+          </button>
+        </div>
+
+        <div id="relayer-status-container" class="relayer-status-box hidden">
+          <div class="status-indicator">
+            <span class="status-dot pulsing"></span>
+            <span id="relayer-status-label">Submitting transaction...</span>
+          </div>
+          <div class="receipt-details font-mono">
+            <div>Tx Hash: <a id="receipt-tx-link" href="#" target="_blank">0x...</a></div>
+            <div>Status: <span id="receipt-status">Mined</span></div>
+            <div>Gas Charged: <span class="gas-zero">$0.00 USDC (Sponsored)</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COLUMN 3: ON-CHAIN STATES & DYNAMIC DRIFT -->
+    <section class="grid-card onchain-ledger" id="ledger-section">
+      <div class="card-header">
+        <div class="header-icon">⛓️</div>
+        <div>
+          <h2>3. Arc Ledger Clearinghouse</h2>
+          <p class="subtitle">Linear streaming states & STN-Delta buffer recovery</p>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="paycard-state-card" id="paycard-active-display">
+          <div class="card-empty-state" id="paycard-empty-state">
+            <p>No active Paycard provisioned. Deploy one using the SDK and Relayer flow.</p>
+          </div>
+
+          <div class="card-active-state hidden" id="paycard-active-state">
+            <div class="registry-header">
+              <span class="card-id-badge" id="display-card-id">ID: 0x...</span>
+              <span class="card-status-badge active" id="display-status">Active</span>
+            </div>
+
+            <!-- Visual dynamic drip engine -->
+            <div class="drip-engine-visualization">
+              <div class="drip-reservoir">
+                <div class="drip-fluid" id="display-fluid-fill" style="width: 100%;"></div>
+                <div class="drip-numbers">
+                  <div class="drip-remaining">
+                    <span class="amount" id="display-available-balance">$0.00</span>
+                    <span class="label">Available in Escrow</span>
+                  </div>
+                  <div class="drip-flow-rate">
+                    <span id="display-velocity">$0.00</span>/sec
+                  </div>
+                </div>
+              </div>
+              
+              <div class="drip-stats">
+                <div class="stat-item">
+                  <span class="label">Payer Wallet</span>
+                  <span class="value font-mono" id="display-payer">0x...</span>
+                </div>
+                <div class="stat-item">
+                  <span class="label">Recipient Merchant</span>
+                  <span class="value font-mono" id="display-recipient">0x...</span>
+                </div>
+                <div class="stat-item">
+                  <span class="label">Recovery Vault</span>
+                  <span class="value font-mono" id="display-recovery">0x...</span>
+                </div>
+                <div class="stat-item">
+                  <span class="label">Lifespan Horizon</span>
+                  <span class="value" id="display-lifespan">0s / 0s remaining</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Ledger operational buttons -->
+            <div class="ledger-actions">
+              <button type="button" id="btn-blockchain-tick" class="btn-secondary">
+                ⏳ Time +10s
+              </button>
+              <button type="button" id="btn-process-drip" class="btn-primary">
+                💧 Drip Settle
+              </button>
+              <button type="button" id="btn-flush-delta" class="btn-danger">
+                ⚡ STN-Delta Recover
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Treasuries & Global Balances -->
+        <div class="global-treasuries-section">
+          <h3>USDC Treasuries Tracker</h3>
+          <div class="treasury-grid">
+            <div class="treasury-card">
+              <span class="label">Agent Wallet</span>
+              <span class="value" id="balance-agent">$0.00</span>
+            </div>
+            <div class="treasury-card">
+              <span class="label">Merchant Wallet</span>
+              <span class="value" id="balance-merchant">$0.00</span>
+            </div>
+            <div class="treasury-card">
+              <span class="label">Recovery Vault</span>
+              <span class="value" id="balance-recovery">$0.00</span>
+            </div>
+            <div class="treasury-card">
+              <span class="label">Clearinghouse Contract</span>
+              <span class="value" id="balance-contract">$0.00</span>
+            </div>
+          </div>
+          <div class="mint-faucet-box">
+            <span>Need USDC?</span>
+            <button type="button" id="btn-mint-faucet" class="btn-text">Mint $100 USDC to Agent</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-content">
+      <p>OpenRails V1 — Engineered for the Lepton Agents Hackathon (Canteen × Circle × Arc)</p>
+      <p class="copyright">Local Simulator and Protocol Sandbox V1.0.0. Gasless USDC Substrate with STN-Delta.</p>
+    </div>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.0/ethers.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
