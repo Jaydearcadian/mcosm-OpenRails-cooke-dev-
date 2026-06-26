@@ -1,8 +1,25 @@
 node_modules
 artifacts
 cache
+forge-cache
+forge-out
+broadcast
 typechain-types
 dist
 sdk/dist
 .env
+deployments/openrails-addresses.local.json
+.factory/
+circle-agent/
 .DS_Store
+*.docx
+*.docx.json
+
+# Local roadmap, handoff, and release-planning artifacts
+HANDOFF.md
+docs/openrails_roadmap.md
+docs/v1_release_notes.md
+docs/dashboard_frontend_and_endpoints.md
+
+# Local Wrangler state
+**/.wrangler/state/

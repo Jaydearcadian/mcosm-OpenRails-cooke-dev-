@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OpenRails V1 - Clearing & Settlement Substrate Dashboard</title>
-  <meta name="description" content="A live interactive visualization and playground for OpenRails V1. Demonstrating EIP-712 off-chain Permission Envelopes, Circle Sponsored Relays, and the STN-Delta buffer recovery engine on the Arc Network.">
+  <title>OpenRails V1 - Vault Settlement Dashboard</title>
+  <meta name="description" content="A local OpenRails V1 playground for EIP-712 Permission Envelopes, Vault-backed escrow, RailsFlow, RailsCard, and STN-Delta buffer recovery.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -15,10 +15,29 @@
     <div class="header-content">
       <div class="logo-area">
         <span class="logo-pill">OPENRAILS V1</span>
-        <span class="network-badge" id="network-status">Arc Network Simulator</span>
+        <span class="network-badge" id="network-status">Local Hardhat Sandbox</span>
       </div>
-      <h1 class="main-title">OpenRails V1 Clearinghouse Substrate</h1>
+      <h1 class="main-title">OpenRails V1 Vault Settlement Dashboard</h1>
       <p class="tagline">Intent-Driven Clearing & Settlement Infrastructure for the Machine Economy</p>
+      <div class="wallet-strip" id="wallet-strip">
+        <div>
+          <span class="wallet-label">Wallet</span>
+          <span class="wallet-value" id="wallet-status">Disconnected</span>
+        </div>
+        <div>
+          <span class="wallet-label">Balance</span>
+          <span class="wallet-value" id="wallet-balance">—</span>
+        </div>
+        <div>
+          <span class="wallet-label">Allowance</span>
+          <span class="wallet-value" id="wallet-allowance">—</span>
+        </div>
+        <div class="wallet-actions">
+          <button type="button" id="btn-connect-wallet" class="btn-accent">Connect Wallet</button>
+          <button type="button" id="btn-switch-wallet-network" class="btn-secondary hidden">Switch/Add Arc Testnet</button>
+        </div>
+        <div class="wallet-hint hidden" id="wallet-network-hint"></div>
+      </div>
     </div>
   </header>
 
@@ -26,7 +45,7 @@
     <!-- COLUMN 1: SDK PLAYGROUND & INTENT GENERATION -->
     <section class="grid-card offchain-sdk" id="sdk-section">
       <div class="card-header">
-        <div class="header-icon">💻</div>
+        <div class="header-icon">SDK</div>
         <div>
           <h2>1. Lepton Agent SDK Runtime</h2>
           <p class="subtitle">Generate & sign off-chain cryptographic Permission Envelopes</p>
@@ -48,12 +67,12 @@
           <div class="form-row split">
             <div class="form-group">
               <label for="intent-allocation">Total Allocation Pool (USDC)</label>
-              <input type="number" id="intent-allocation" value="1050" min="1" step="any">
+              <input type="number" id="intent-allocation" value="1050" min="0.000001" step="any">
               <span class="input-helper">Includes STN-Delta buffer (e.g. $50.00)</span>
             </div>
             <div class="form-group">
               <label for="intent-velocity">Flow Velocity ($R$ / sec)</label>
-              <input type="number" id="intent-velocity" value="5" min="0.1" step="any">
+              <input type="number" id="intent-velocity" value="5" min="0" step="any">
               <span class="input-helper">Settlement drip rate in USDC/sec</span>
             </div>
           </div>
@@ -72,18 +91,75 @@
           <div class="form-row split">
             <div class="form-group">
               <label for="intent-lifespan">Lifespan Horizon (Seconds)</label>
-              <input type="number" id="intent-lifespan" value="120" min="10">
+              <input type="number" id="intent-lifespan" value="120" min="0">
+              <span class="input-helper">Use 0 for instant Vault settlement</span>
             </div>
             <div class="form-group">
-              <label for="intent-payer-key">Agent Private Key (Off-Chain)</label>
+              <label for="intent-payer-key">Local Demo Payer Key (Off-Chain)</label>
               <input type="password" id="intent-payer-key" placeholder="Private key hex">
+              <span class="input-helper">Never use production keys. The gateway no longer exposes demo keys.</span>
+            </div>
+          </div>
+
+          <div class="form-row split">
+            <div class="form-group">
+              <label for="intent-mode">Envelope Mode</label>
+              <select id="intent-mode">
+                <option value="railsflow">RailsFlow fixed recipient</option>
+                <option value="railscard_bearer">RailsCard bearer claim</option>
+                <option value="railscard_recipient_bound">RailsCard recipient-bound</option>
+              </select>
+              <span class="input-helper">Bearer is first-holder-wins. Recipient-bound signs a fixed wallet.</span>
+            </div>
+            <div class="form-group">
+              <label for="intent-nonce-channel">Nonce Channel</label>
+              <input type="number" id="intent-nonce-channel" value="0" min="0">
+            </div>
+          </div>
+
+          <div class="form-row split">
+            <div class="form-group">
+              <label for="intent-nonce-value">Nonce Value</label>
+              <input type="number" id="intent-nonce-value" value="0" min="0">
+            </div>
+            <div class="form-group">
+              <label for="claim-recipient">RailsCard Claim Recipient</label>
+              <input type="text" id="claim-recipient" placeholder="0x...">
+              <span class="input-helper">Used only when relaying a wildcard RailsCard</span>
+            </div>
+          </div>
+
+          <div class="form-row split">
+            <div class="form-group">
+              <label for="intent-metadata-ref">Invoice or Card Metadata Ref</label>
+              <input type="text" id="intent-metadata-ref" value="demo-invoice-001">
+              <span class="input-helper">Hashed into metadataHash and signed by the payer</span>
+            </div>
+            <div class="form-group">
+              <label for="intent-workflow-id">Workflow Scope ID</label>
+              <input type="text" id="intent-workflow-id" placeholder="optional workflowId">
+              <span class="input-helper">Optional master job scope cryptographically bound through metadataHash</span>
+            </div>
+            <div class="form-group">
+              <label for="intent-metadata-hash">Signed Metadata Hash</label>
+              <input type="text" id="intent-metadata-hash" placeholder="0x..." readonly>
             </div>
           </div>
 
           <button type="button" id="btn-generate-envelope" class="btn-primary w-full">
             Generate & Sign Permission Envelope
           </button>
+          <button type="button" id="btn-create-request-link" class="btn-secondary w-full">
+            Create RailsFlow Request Link / QR
+          </button>
         </form>
+
+        <div class="inbound-link-review hidden" id="inbound-link-container">
+          <div class="output-header">
+            <span id="inbound-link-status">OpenRails link loaded</span>
+          </div>
+          <pre><code id="inbound-link-details" class="jetbrains-mono"></code></pre>
+        </div>
 
         <div class="envelope-output hidden" id="envelope-output-container">
           <div class="output-header">
@@ -94,23 +170,39 @@
             <pre><code id="envelope-payload-text" class="jetbrains-mono"></code></pre>
           </div>
         </div>
+
+        <div class="artifact-output hidden" id="share-artifact-container">
+          <div class="output-header">
+            <span id="share-artifact-type">OpenRails Link Artifact</span>
+            <button id="btn-copy-share-link" class="btn-text">Copy Link</button>
+          </div>
+          <p class="artifact-warning" id="share-artifact-warning">Review this artifact before sharing.</p>
+          <input type="text" id="share-link-output" readonly>
+          <div class="qr-panel">
+            <canvas id="share-qr-canvas" width="180" height="180" aria-label="OpenRails QR code"></canvas>
+          </div>
+          <details>
+            <summary>Request interceptor preview</summary>
+            <pre><code id="interceptor-preview" class="jetbrains-mono"></code></pre>
+          </details>
+        </div>
       </div>
     </section>
 
-    <!-- COLUMN 2: CIRCLE SPONSORED RELAYER -->
+    <!-- COLUMN 2: LOCAL RELAYER -->
     <section class="grid-card sponsored-relayer" id="relayer-section">
       <div class="card-header">
-        <div class="header-icon">🔌</div>
+        <div class="header-icon">API</div>
         <div>
-          <h2>2. Gasless Relayer Gateway</h2>
-          <p class="subtitle">Sponsored meta-transaction via Circle App Kit / Paymaster</p>
+          <h2>2. Local Relayer Gateway</h2>
+          <p class="subtitle">Local sandbox transaction submission to the Vault</p>
         </div>
       </div>
 
       <div class="card-body flex-col justify-between">
         <div>
           <div class="info-alert">
-            <p><strong>Gasless Transaction Flow:</strong> The agent submits the off-chain signed envelope to the Gateway. The relayer sponsors the transaction gas, meaning the agent wallet does not need to hold native gas tokens to interact with the contract.</p>
+            <p><strong>Relayer Transaction Flow:</strong> The dashboard submits the off-chain signed envelope to the Gateway. The local relayer submits the transaction to the Vault. Circle Paymaster support is future-facing in this sandbox.</p>
           </div>
 
           <div class="form-group">
@@ -119,7 +211,7 @@
           </div>
 
           <button type="button" id="btn-submit-relayer" class="btn-accent w-full" disabled>
-            Broadcast Sponsored Transaction to Arc
+            Broadcast Transaction to Vault
           </button>
         </div>
 
@@ -131,7 +223,7 @@
           <div class="receipt-details font-mono">
             <div>Tx Hash: <a id="receipt-tx-link" href="#" target="_blank">0x...</a></div>
             <div>Status: <span id="receipt-status">Mined</span></div>
-            <div>Gas Charged: <span class="gas-zero">$0.00 USDC (Sponsored)</span></div>
+            <div>Submission: <span class="gas-zero">Local relayer sandbox</span></div>
           </div>
         </div>
       </div>
@@ -140,10 +232,10 @@
     <!-- COLUMN 3: ON-CHAIN STATES & DYNAMIC DRIFT -->
     <section class="grid-card onchain-ledger" id="ledger-section">
       <div class="card-header">
-        <div class="header-icon">⛓️</div>
+        <div class="header-icon">V</div>
         <div>
-          <h2>3. Arc Ledger Clearinghouse</h2>
-          <p class="subtitle">Linear streaming states & STN-Delta buffer recovery</p>
+          <h2>3. Arc Vault Ledger</h2>
+          <p class="subtitle">Authoritative escrow, settlement, and STN-Delta recovery</p>
         </div>
       </div>
 
@@ -197,14 +289,133 @@
             <!-- Ledger operational buttons -->
             <div class="ledger-actions">
               <button type="button" id="btn-blockchain-tick" class="btn-secondary">
-                ⏳ Time +10s
+                Time +10s
               </button>
               <button type="button" id="btn-process-drip" class="btn-primary">
-                💧 Drip Settle
+                Drip Settle
+              </button>
+              <button type="button" id="btn-auto-drip" class="btn-accent">
+                Auto Drip
               </button>
               <button type="button" id="btn-flush-delta" class="btn-danger">
-                ⚡ STN-Delta Recover
+                Recover Buffer and Close
               </button>
+            </div>
+            <p class="artifact-warning" id="ledger-action-status">Manual controls are ready.</p>
+
+            <div class="access-panel hidden" id="access-panel">
+              <h3>Paid Service Access Credential</h3>
+              <p class="input-helper">Issue a short-lived `openrails-access-v1` credential for this active Vault row, then test a local protected endpoint.</p>
+              <div class="form-row split">
+                <div class="form-group">
+                  <label for="access-service-origin">Service Origin</label>
+                  <input type="text" id="access-service-origin" value="http://localhost:3001">
+                </div>
+                <div class="form-group">
+                  <label for="access-service-address">Service Address</label>
+                  <input type="text" id="access-service-address" placeholder="0x...">
+                </div>
+              </div>
+              <div class="form-row split">
+                <div class="form-group">
+                  <label for="access-scope">Access Scope</label>
+                  <input type="text" id="access-scope" value="GET /api/demo/protected-resource">
+                </div>
+                <div class="form-group">
+                  <label for="access-ttl">TTL Seconds</label>
+                  <input type="number" id="access-ttl" value="300" min="30">
+                </div>
+              </div>
+              <div class="ledger-actions">
+                <button type="button" id="btn-issue-access" class="btn-primary">Issue Credential</button>
+                <button type="button" id="btn-copy-access-headers" class="btn-secondary">Copy Headers</button>
+                <button type="button" id="btn-test-access" class="btn-accent">Test Access</button>
+              </div>
+              <p class="artifact-warning" id="access-status">Open a Paycard Stream to enable access credentials.</p>
+              <div class="code-box-wrapper">
+                <pre><code id="access-token-output" class="jetbrains-mono"></code></pre>
+              </div>
+              <div class="code-box-wrapper">
+                <pre><code id="access-headers-output" class="jetbrains-mono"></code></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="judge-mode-grid">
+          <div class="judge-panel agent-panel">
+            <div class="judge-panel-header">
+              <span class="judge-kicker">30% Agency</span>
+              <h3>Agent Decision Trace</h3>
+            </div>
+            <p id="agent-trace-summary">Agent is waiting for payment terms.</p>
+            <div class="trace-list" id="agent-trace-list">
+              <div class="trace-item">Prepare bounded spend authority.</div>
+            </div>
+          </div>
+
+          <div class="judge-panel traction-panel">
+            <div class="judge-panel-header">
+              <span class="judge-kicker">30% Traction</span>
+              <h3>Live Session Metrics</h3>
+            </div>
+            <div class="metric-grid">
+              <div><span id="metric-streams">0</span><label>Streams</label></div>
+              <div><span id="metric-escrowed">$0.00</span><label>Escrowed</label></div>
+              <div><span id="metric-settled">$0.00</span><label>Settled</label></div>
+              <div><span id="metric-recovered">$0.00</span><label>Recovered</label></div>
+              <div><span id="metric-receipts">0</span><label>Receipts</label></div>
+              <div><span id="metric-wallets">0</span><label>Wallets</label></div>
+            </div>
+            <p class="input-helper" id="metric-recent-tx">No session transactions recorded yet.</p>
+          </div>
+
+          <div class="judge-panel receipt-panel">
+            <div class="judge-panel-header">
+              <span class="judge-kicker">Proof Artifact</span>
+              <h3>OpenRails Receipt</h3>
+            </div>
+            <p id="receipt-summary">Open, settle, or flush a Paycard Stream to generate a receipt.</p>
+            <div class="ledger-actions">
+              <button type="button" id="btn-copy-receipt" class="btn-secondary" disabled>Copy Receipt JSON</button>
+            </div>
+            <div class="code-box-wrapper receipt-output">
+              <pre><code id="receipt-json-output" class="jetbrains-mono"></code></pre>
+            </div>
+          </div>
+
+          <div class="judge-panel x402-panel">
+            <div class="judge-panel-header">
+              <span class="judge-kicker">Bridge Proof</span>
+              <h3>Circle x402 Bridge</h3>
+            </div>
+            <p id="x402-bridge-summary">Check the x402 bridge gate or display a paid artifact response.</p>
+            <div class="ledger-actions">
+              <button type="button" id="btn-check-x402-bridge" class="btn-secondary">Check x402 Bridge Gate</button>
+            </div>
+            <p class="input-helper">x402 proves HTTP payment. OpenRails Vault escrow remains false until a Paycard Stream is opened.</p>
+            <div class="code-box-wrapper receipt-output">
+              <pre><code id="x402-bridge-output" class="jetbrains-mono"></code></pre>
+            </div>
+          </div>
+
+          <div class="judge-panel settings-panel">
+            <div class="judge-panel-header">
+              <span class="judge-kicker">Settings</span>
+              <h3>Judge Walkthrough</h3>
+            </div>
+            <label class="toggle-row">
+              <input type="checkbox" id="toggle-judge-script">
+              <span>Expose hidden judge demo script</span>
+            </label>
+            <div class="judge-script hidden" id="judge-script-panel">
+              <ol>
+                <li>Connect wallet and switch/add Arc testnet.</li>
+                <li>Open a RailsFlow Paycard Stream with exact USDC approval.</li>
+                <li>Show agent decision trace, metadata hash, and Nonce Lane.</li>
+                <li>Settle earned value and generate a settlement receipt.</li>
+                <li>Recover residual buffer and show traction metrics.</li>
+              </ol>
             </div>
           </div>
         </div>
@@ -241,12 +452,12 @@
 
   <footer class="app-footer">
     <div class="footer-content">
-      <p>OpenRails V1 — Engineered for the Lepton Agents Hackathon (Canteen × Circle × Arc)</p>
-      <p class="copyright">Local Simulator and Protocol Sandbox V1.0.0. Gasless USDC Substrate with STN-Delta.</p>
+      <p>OpenRails V1 &mdash; ArcOpenRailsHubV1 &middot; Lepton Agents Hackathon (Canteen &times; Circle &times; Arc)</p>
+      <p class="copyright">Local simulator and protocol sandbox V1.0.0. Vault-backed USDC escrow with STN-Delta. Hardened with Ownable2Step, 2D nonce lanes, and reentrancy guard.</p>
     </div>
   </footer>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.0/ethers.umd.min.js"></script>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

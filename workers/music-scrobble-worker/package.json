@@ -1,0 +1,17 @@
+{
+  "name": "music-scrobble-worker",
+  "version": "1.0.0",
+  "description": "OpenRails Music Scrobble Webhook Worker",
+  "main": "src/index.ts",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "start": "wrangler dev"
+  },
+  "dependencies": {
+    "ethers": "^6.13.0",
+    "viem": "^2.53.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.104.0"
+  }
+}

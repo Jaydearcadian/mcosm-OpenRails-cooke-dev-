@@ -7,17 +7,27 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
+    "test:foundry": "forge test",
     "build:sdk": "tsc -p sdk/tsconfig.json",
     "node": "hardhat node",
     "server": "ts-node server/index.ts",
     "start": "concurrently \"npm run node\" \"npm run server\"",
-    "dev": "vite dashboard"
+    "dev": "vite dashboard",
+    "stream-gateway": "ts-node stream-gateway/index.ts",
+    "launch:check": "ts-node scripts/launch-check.ts",
+    "deploy:openrails": "hardhat run scripts/deploy-openrails.ts --network arcTestnet",
+    "smoke:testnet": "hardhat run scripts/smoke-openrails-testnet.ts --network arcTestnet"
   },
   "dependencies": {
+    "@circle-fin/x402-batching": "^3.2.0",
+    "@x402/core": "^2.16.0",
+    "@x402/evm": "^2.16.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.0",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "qrcode": "^1.5.4",
+    "viem": "^2.53.1"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

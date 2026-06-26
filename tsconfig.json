@@ -8,6 +8,6 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["hardhat.config.ts", "server/**/*.ts", "test/**/*.ts"],
+  "include": ["hardhat.config.ts", "server/**/*.ts", "test/**/*.ts", "stream-gateway/**/*.ts"],
   "exclude": ["node_modules"]
 }

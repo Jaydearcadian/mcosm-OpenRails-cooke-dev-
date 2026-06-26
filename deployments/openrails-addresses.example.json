@@ -1,0 +1,10 @@
+{
+  "network": "arc-testnet",
+  "chainId": 0,
+  "arcUsdcAddress": "0x0000000000000000000000000000000000000000",
+  "arcOpenRailsHubV1": "0x0000000000000000000000000000000000000000",
+  "deployer": "0x0000000000000000000000000000000000000000",
+  "deployedAt": "replace-with-iso-timestamp",
+  "explorerBaseUrl": "https://example.invalid",
+  "notes": "Template only. Do not commit private RPC URLs, keys, or production-only addresses."
+}
