@@ -20,6 +20,15 @@ HANDOFF.md
 docs/openrails_roadmap.md
 docs/v1_release_notes.md
 docs/dashboard_frontend_and_endpoints.md
+# Contains a private Arc RPC auth token — never commit
+docs/canteen_cli_status.md
+
+# Local experiments not intended for this V1 package
+experiments/name-registry/
 
 # Local Wrangler state
 **/.wrangler/state/
+
+# Stream gateway persistent projection (runtime data, non-authoritative)
+.openrails-stream/
+**/.openrails-stream/

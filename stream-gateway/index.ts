@@ -8,8 +8,11 @@ import { ArcJsonRpcProviderPool } from "./provider-pool";
 import { LogIngestionParser, type ParsedEvent } from "./log-parser";
 import {
   MemoryCacheStateStore,
+  PersistentFileStateStore,
   StreamTerminationQueue,
   type PaycardStreamState,
+  type StreamStateStore,
+  type StreamEventRecord,
 } from "./state-store";
 import { JitterResistantTimerLoop } from "./timer";
 import {
@@ -26,9 +29,14 @@ export { ArcJsonRpcProviderPool, ArcWebSocketProviderPool } from "./provider-poo
 export { LogIngestionParser, type ParsedEvent } from "./log-parser";
 export {
   MemoryCacheStateStore,
+  PersistentFileStateStore,
+  PersistentStreamReader,
   StreamTerminationQueue,
   type PaycardStreamState,
   type PaycardStatus,
+  type StreamStateStore,
+  type StreamEventRecord,
+  type StreamQueryFilter,
 } from "./state-store";
 export { JitterResistantTimerLoop, type TimerCallback } from "./timer";
 export {
@@ -55,6 +63,15 @@ export interface StreamGatewayConfig {
   tickIntervalMs?: number;
   /** Maximum webhook delivery retries (default 5). */
   maxWebhookRetries?: number;
+  /**
+   * Injected state store. Defaults to an in-memory store (used by tests). Pass a
+   * {@link PersistentFileStateStore} for durable, restart-surviving history.
+   */
+  stateStore?: StreamStateStore;
+  /** Block to backfill historical events from when {@link backfillOnStart} is set. */
+  startBlock?: number;
+  /** When true and `startBlock` is provided, replay logs from chain on start. */
+  backfillOnStart?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,12 +97,15 @@ export interface StreamGatewayConfig {
  * ```
  */
 export class StreamGateway {
-  private readonly config: Required<StreamGatewayConfig>;
+  private readonly config: StreamGatewayConfig & {
+    tickIntervalMs: number;
+    maxWebhookRetries: number;
+  };
 
   // Sub-modules
   private pool!: ArcJsonRpcProviderPool;
   private parser!: LogIngestionParser;
-  private store!: MemoryCacheStateStore;
+  private store!: StreamStateStore;
   private queue!: StreamTerminationQueue;
   private timer!: JitterResistantTimerLoop;
   private keyPair!: Ed25519GatewayKeyPair;
@@ -124,9 +144,15 @@ export class StreamGateway {
     const eventFragments = this.extractEventFragments(this.config.contractAbi);
     this.parser = new LogIngestionParser(eventFragments);
 
-    // 3. State store + termination queue
-    this.store = new MemoryCacheStateStore();
+    // 3. State store + termination queue. A persistent store may have loaded
+    //    prior state from disk, so reschedule any still-active expirations.
+    this.store = this.config.stateStore ?? new MemoryCacheStateStore();
     this.queue = new StreamTerminationQueue();
+    for (const state of this.store.getActive()) {
+      if (state.lifespan > 0) {
+        this.queue.schedule(state.paycardId, state.genesis + state.lifespan);
+      }
+    }
 
     // 4. Webhook infrastructure
     this.keyPair = new Ed25519GatewayKeyPair();
@@ -141,7 +167,17 @@ export class StreamGateway {
       (log) => void this.handleLog(log),
     );
 
-    // 6. Timer loop – micro-accrual projections + expiration sweeps
+    // 6. Backfill historical events from chain so a fresh process rebuilds
+    //    state instead of starting empty. Idempotent via the event table.
+    if (this.config.backfillOnStart && this.config.startBlock !== undefined) {
+      const applied = await this.backfill(this.config.startBlock);
+      console.log(
+        `[arc-stream-gateway] backfill complete | fromBlock=${this.config.startBlock} ` +
+          `applied=${applied} tracked=${this.store.size}`,
+      );
+    }
+
+    // 7. Timer loop – micro-accrual projections + expiration sweeps
     this.timer = new JitterResistantTimerLoop((nowSec) => {
       this.processAccruals(nowSec);
       this.sweepExpired(nowSec);
@@ -226,15 +262,25 @@ export class StreamGateway {
    * Routes a raw on-chain log through the parser and updates local state.
    */
   private async handleLog(log: ethers.Log): Promise<void> {
-    const logIndex = (log as any).logIndex ?? (log as any).index ?? 0;
-    const logKey = `${log.blockHash ?? log.blockNumber}:${log.transactionHash}:${logIndex}`;
-    if (this.processedLogKeys.has(logKey)) return;
-    this.processedLogKeys.add(logKey);
-
     const event = this.parser.parse(log);
     if (!event) return;
+
+    // Idempotency: dedup by `${txHash}:${logIndex}` across both the in-memory
+    // fast path and (for durable stores) the persisted event table, so backfill
+    // and live subscription overlap — and restarts — never double-apply.
+    const logKey = `${event.transactionHash}:${event.logIndex}`;
+    if (this.processedLogKeys.has(logKey)) return;
+    if (this.store.hasEvent?.(logKey)) {
+      this.processedLogKeys.add(logKey);
+      return;
+    }
+    this.processedLogKeys.add(logKey);
+
     const block = await this.pool.getProvider().getBlock(log.blockNumber);
     event.blockTimestamp = block?.timestamp;
+
+    // Persist the event (append-only) before applying state mutations.
+    this.store.recordEvent?.(this.toEventRecord(event));
 
     switch (event.eventName) {
       case "PaycardProvisioned":
@@ -252,6 +298,53 @@ export class StreamGateway {
 
     // Fan-out to registered webhooks.
     void this.fanOutWebhook(event);
+  }
+
+  /** Projects a parsed event into a durable {@link StreamEventRecord}. */
+  private toEventRecord(event: ParsedEvent): StreamEventRecord {
+    const existing = this.store.get(event.paycardId);
+    return {
+      paycardId: event.paycardId,
+      eventName: event.eventName,
+      workflowId: existing?.workflowId,
+      metadataHash: (event.args["metadataHash"] as string) ?? existing?.metadataHash,
+      blockNumber: event.blockNumber,
+      blockTimestamp: event.blockTimestamp,
+      transactionHash: event.transactionHash,
+      logIndex: event.logIndex,
+      args: event.args,
+      recordedAt: Date.now(),
+    };
+  }
+
+  /**
+   * Replays historical contract logs from `fromBlock` through `toBlock` (or the
+   * current head) so a freshly started gateway rebuilds state from chain rather
+   * than starting empty. Safe to call repeatedly — {@link handleLog} dedups.
+   *
+   * @returns the number of logs processed.
+   */
+  async backfill(fromBlock: number, toBlock?: number): Promise<number> {
+    const provider = this.pool.getProvider();
+    const head = toBlock ?? (await provider.getBlockNumber());
+    const topicFilters = this.parser.getTopicFilters();
+    const logs = await provider.getLogs({
+      address: this.config.contractAddress,
+      fromBlock,
+      toBlock: head,
+      topics: [topicFilters],
+    });
+    // Apply in block/log order for deterministic state reconstruction.
+    logs.sort(
+      (a, b) =>
+        a.blockNumber - b.blockNumber ||
+        Number((a as any).index ?? (a as any).logIndex ?? 0) -
+          Number((b as any).index ?? (b as any).logIndex ?? 0),
+    );
+    for (const log of logs) {
+      await this.handleLog(log);
+    }
+    return logs.length;
   }
 
   /**
@@ -302,6 +395,9 @@ export class StreamGateway {
     if (remaining <= 0n) {
       existing.status = "Terminated";
     }
+
+    // Persist the authoritative balance/status change (durable stores only).
+    this.store.set(event.paycardId, existing);
   }
 
   /**
@@ -314,6 +410,9 @@ export class StreamGateway {
 
     existing.availableBalance = "0";
     existing.status = "Terminated";
+
+    // Persist the termination (durable stores only).
+    this.store.set(event.paycardId, existing);
   }
 
   // ---------------------------------------------------------------------------
@@ -353,12 +452,14 @@ export class StreamGateway {
       const state = this.store.get(id);
       if (state && state.status === "Active") {
         state.status = "PendingSettlement";
+        this.store.set(id, state);
         void this.fanOutWebhook({
           eventName: "StreamExpiredPendingSettlement",
           paycardId: id,
           args: { reason: "lifespan_elapsed" },
           blockNumber: 0,
           transactionHash: "",
+          logIndex: 0,
         });
       }
     }
@@ -455,11 +556,26 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   }
 
+  // Durable, restart-surviving store. The server reads the same directory via
+  // PersistentStreamReader to serve history endpoints.
+  const storeDir =
+    process.env.OPENRAILS_STREAM_STORE_DIR ||
+    path.join(__dirname, "..", ".openrails-stream");
+  const startBlockEnv = process.env.OPENRAILS_STREAM_START_BLOCK;
+  const startBlock =
+    startBlockEnv !== undefined && startBlockEnv !== ""
+      ? Number(startBlockEnv)
+      : undefined;
+  console.log(`[StreamGateway] Persistent store dir: ${storeDir}`);
+
   const gateway = new StreamGateway({
     rpcUrls: [RPC_URL],
     contractAddress,
     contractAbi: abi,
     tickIntervalMs: 500, // 2 ticks/sec for demo visibility
+    stateStore: new PersistentFileStateStore(storeDir),
+    startBlock,
+    backfillOnStart: startBlock !== undefined,
   });
 
   // Start the gateway

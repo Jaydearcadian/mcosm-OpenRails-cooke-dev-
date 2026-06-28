@@ -7,6 +7,12 @@ import * as path from "path";
 import { hashSettlementIntent } from "../sdk/src/client";
 import { CanonicalMetadataV1, hashOpenRailsMetadata } from "../sdk/src/metadata";
 import { buildIntentProof, buildTransactionProof } from "../sdk/src/proof";
+import { recoverPaycardsFromLogs } from "../sdk/src/wallet";
+import {
+  PersistentStreamReader,
+  type StreamQueryFilter,
+  type PaycardStatus,
+} from "../stream-gateway/state-store";
 import { createRateLimiter } from "./rate-limiter";
 import {
   validateOpenPaycardRequest,
@@ -38,6 +44,28 @@ const X402_FACILITATOR_URL = process.env.OPENRAILS_X402_FACILITATOR_URL || "http
 const X402_NETWORK = "eip155:5042002";
 const X402_SELLER_ADDRESS =
   process.env.OPENRAILS_X402_SELLER_ADDRESS || "0x933a2405f84c224be1ef373ba16e992e1f459682";
+const PAYCARD_RECOVERY_DEFAULT_LOOKBACK_BLOCKS = 50_000;
+const PAYCARD_RECOVERY_MAX_BLOCK_SPAN = 250_000;
+const PAYCARD_RECOVERY_CHUNK_SIZE = 5_000;
+const PAYCARD_RECOVERY_MAX_LIMIT = 50;
+const ARC_PUBLIC_RELAYER_ENABLED =
+  DASHBOARD_MODE === "arc-testnet" && process.env.OPENRAILS_ENABLE_ARC_PUBLIC_RELAYER === "true";
+const ARC_PUBLIC_RELAYER_MAX_ALLOCATION_USDC =
+  process.env.OPENRAILS_PUBLIC_RELAYER_MAX_ALLOCATION_USDC || "1";
+const ARC_PUBLIC_RELAYER_MAX_LIFESPAN_SECONDS = Number(
+  process.env.OPENRAILS_PUBLIC_RELAYER_MAX_LIFESPAN_SECONDS || "3600",
+);
+const ARC_PUBLIC_RELAYER_MAX_VELOCITY_USDC_PER_SECOND =
+  process.env.OPENRAILS_PUBLIC_RELAYER_MAX_VELOCITY_USDC_PER_SECOND || "0.1";
+
+// Durable stream history projection. The stream-gateway writes these files; the
+// server reads them (read-only) to serve non-authoritative history endpoints.
+// The Vault remains the authoritative source of truth for funds.
+const STREAM_STORE_DIR =
+  process.env.OPENRAILS_STREAM_STORE_DIR || path.join(__dirname, "..", ".openrails-stream");
+const streamReader = new PersistentStreamReader(STREAM_STORE_DIR);
+const STREAM_HISTORY_DISCLAIMER =
+  "Non-authoritative projection from the stream gateway. The onchain Vault is the source of truth.";
 
 type X402PaidRequest = Request & {
   payment?: {
@@ -58,7 +86,7 @@ const GAS_FEE_BUFFER_MULTIPLIER = 1.15;
 
 // Globals to store contract instances and addresses
 let provider: ethers.JsonRpcProvider;
-let relayerWallet: ethers.JsonRpcSigner | undefined;
+let relayerWallet: ethers.Signer | undefined;
 let clearinghouseContract: any;
 let usdcContract: any;
 
@@ -94,8 +122,14 @@ const ARC_READ_ONLY_CAPABILITIES = {
   canUsePrivateKeySigning: false,
 };
 
+const ARC_PUBLIC_RELAYER_CAPABILITIES = {
+  ...ARC_READ_ONLY_CAPABILITIES,
+  canRelayOpen: true,
+};
+
 function currentCapabilities() {
-  return DASHBOARD_MODE === "arc-testnet" ? ARC_READ_ONLY_CAPABILITIES : LOCAL_CAPABILITIES;
+  if (DASHBOARD_MODE !== "arc-testnet") return LOCAL_CAPABILITIES;
+  return ARC_PUBLIC_RELAYER_ENABLED ? ARC_PUBLIC_RELAYER_CAPABILITIES : ARC_READ_ONLY_CAPABILITIES;
 }
 
 function isLoopbackProviderUrl(url: string): boolean {
@@ -162,6 +196,94 @@ function extractVaultEventAmount(receipt: any, eventName: string, amountField: s
     }
   }
   return total.toString();
+}
+
+function parseRecoveryBlockParam(value: unknown, name: string): number | undefined {
+  if (value === undefined) return undefined;
+  const raw = String(value);
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(`${name} is too large`);
+  }
+  return parsed;
+}
+
+function parseRecoveryLimitParam(value: unknown): number {
+  if (value === undefined) return 20;
+  const raw = String(value);
+  if (!/^\d+$/.test(raw)) {
+    throw new Error("limit must be a positive integer");
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > PAYCARD_RECOVERY_MAX_LIMIT) {
+    throw new Error(`limit must be between 1 and ${PAYCARD_RECOVERY_MAX_LIMIT}`);
+  }
+  return parsed;
+}
+
+function publicRelayerCaps() {
+  const maxAllocationBase = parsePublicRelayerUnits(
+    ARC_PUBLIC_RELAYER_MAX_ALLOCATION_USDC,
+    "OPENRAILS_PUBLIC_RELAYER_MAX_ALLOCATION_USDC",
+  );
+  const maxVelocityBase = parsePublicRelayerUnits(
+    ARC_PUBLIC_RELAYER_MAX_VELOCITY_USDC_PER_SECOND,
+    "OPENRAILS_PUBLIC_RELAYER_MAX_VELOCITY_USDC_PER_SECOND",
+  );
+  return {
+    maxAllocationUsdc: ARC_PUBLIC_RELAYER_MAX_ALLOCATION_USDC,
+    maxAllocationBaseUnits: maxAllocationBase.toString(),
+    maxLifespanSeconds: ARC_PUBLIC_RELAYER_MAX_LIFESPAN_SECONDS,
+    maxVelocityUsdcPerSecond: ARC_PUBLIC_RELAYER_MAX_VELOCITY_USDC_PER_SECOND,
+    maxVelocityBaseUnitsPerSecond: maxVelocityBase.toString(),
+  };
+}
+
+function parsePublicRelayerUnits(value: string, name: string): bigint {
+  try {
+    const parsed = ethers.parseUnits(value, 6);
+    if (parsed <= 0n) throw new Error("non-positive");
+    return parsed;
+  } catch {
+    throw new Error(`${name} must be a positive decimal USDC amount`);
+  }
+}
+
+function assertPublicRelayerConfig(): void {
+  if (!Number.isInteger(ARC_PUBLIC_RELAYER_MAX_LIFESPAN_SECONDS) || ARC_PUBLIC_RELAYER_MAX_LIFESPAN_SECONDS <= 0) {
+    throw new Error("OPENRAILS_PUBLIC_RELAYER_MAX_LIFESPAN_SECONDS must be a positive integer");
+  }
+  parsePublicRelayerUnits(ARC_PUBLIC_RELAYER_MAX_ALLOCATION_USDC, "OPENRAILS_PUBLIC_RELAYER_MAX_ALLOCATION_USDC");
+  parsePublicRelayerUnits(ARC_PUBLIC_RELAYER_MAX_VELOCITY_USDC_PER_SECOND, "OPENRAILS_PUBLIC_RELAYER_MAX_VELOCITY_USDC_PER_SECOND");
+}
+
+function validatePublicRelayerCaps(intent: any): string[] {
+  if (!ARC_PUBLIC_RELAYER_ENABLED) return [];
+  const reasons: string[] = [];
+  const maxAllocationBase = parsePublicRelayerUnits(
+    ARC_PUBLIC_RELAYER_MAX_ALLOCATION_USDC,
+    "OPENRAILS_PUBLIC_RELAYER_MAX_ALLOCATION_USDC",
+  );
+  const maxVelocityBase = parsePublicRelayerUnits(
+    ARC_PUBLIC_RELAYER_MAX_VELOCITY_USDC_PER_SECOND,
+    "OPENRAILS_PUBLIC_RELAYER_MAX_VELOCITY_USDC_PER_SECOND",
+  );
+  const allocation = BigInt(intent.totalAllocationPool.toString());
+  const velocity = BigInt(intent.flowVelocityPerSecond.toString());
+  const lifespan = Number(intent.lifespanSeconds);
+  if (allocation > maxAllocationBase) {
+    reasons.push(`totalAllocationPool exceeds public relayer cap of ${ARC_PUBLIC_RELAYER_MAX_ALLOCATION_USDC} USDC`);
+  }
+  if (!Number.isInteger(lifespan) || lifespan < 0 || lifespan > ARC_PUBLIC_RELAYER_MAX_LIFESPAN_SECONDS) {
+    reasons.push(`lifespanSeconds exceeds public relayer cap of ${ARC_PUBLIC_RELAYER_MAX_LIFESPAN_SECONDS}`);
+  }
+  if (velocity > maxVelocityBase) {
+    reasons.push(`flowVelocityPerSecond exceeds public relayer cap of ${ARC_PUBLIC_RELAYER_MAX_VELOCITY_USDC_PER_SECOND} USDC/sec`);
+  }
+  return reasons;
 }
 
 // ---------------------------------------------------------------------------
@@ -241,13 +363,13 @@ async function initContracts() {
   }
 
   relayerWallet = signers[0];
-  relayerAddress = relayerWallet.address;
+  relayerAddress = await relayerWallet.getAddress();
   
   const network = await provider.getNetwork();
   chainId = Number(network.chainId);
 
-  console.log(`Connected to RPC. ChainId: ${chainId}, Relayer Address: ${relayerWallet.address}`);
-  let relayerNonce = await provider.getTransactionCount(relayerWallet.address, "pending");
+  console.log(`Connected to RPC. ChainId: ${chainId}, Relayer Address: ${relayerAddress}`);
+  let relayerNonce = await provider.getTransactionCount(relayerAddress, "pending");
 
   // Deploy Mock USDC
   const mockUsdcArtifact = getContractAbi("MockUSDC");
@@ -313,7 +435,20 @@ async function initArcTestnetReadOnly() {
   explorerBaseUrl = String(process.env.ARC_EXPLORER_BASE_URL || registry.explorerBaseUrl || "");
 
   const hubArtifact = getContractAbi("ArcOpenRailsHubV1");
-  clearinghouseContract = new ethers.Contract(clearinghouseAddress, hubArtifact.abi, provider);
+  if (ARC_PUBLIC_RELAYER_ENABLED) {
+    assertPublicRelayerConfig();
+    const privateKey = process.env.OPENRAILS_RELAYER_PRIVATE_KEY;
+    if (!privateKey || !/^(0x)?[0-9a-fA-F]{64}$/u.test(privateKey)) {
+      throw new Error("OPENRAILS_RELAYER_PRIVATE_KEY must be a 32-byte hex key when OPENRAILS_ENABLE_ARC_PUBLIC_RELAYER=true");
+    }
+    relayerWallet = new ethers.Wallet(privateKey, provider);
+    relayerAddress = await relayerWallet.getAddress();
+    clearinghouseContract = new ethers.Contract(clearinghouseAddress, hubArtifact.abi, relayerWallet);
+    console.log(`Arc public relayer enabled. Relayer address: ${relayerAddress}`);
+  } else {
+    clearinghouseContract = new ethers.Contract(clearinghouseAddress, hubArtifact.abi, provider);
+    relayerAddress = "";
+  }
   usdcContract = new ethers.Contract(usdcAddress, READ_ONLY_ERC20_ABI, provider);
 
   await provider.getCode(clearinghouseAddress).then((code) => {
@@ -323,7 +458,7 @@ async function initArcTestnetReadOnly() {
     if (code === "0x") throw new Error("Arc USDC address has no contract code");
   });
 
-  console.log(`Arc testnet read-only dashboard connected. ChainId: ${chainId}`);
+  console.log(`Arc testnet dashboard connected. ChainId: ${chainId}`);
   console.log(`ArcOpenRailsHubV1: ${clearinghouseAddress}`);
   console.log(`USDC token: ${usdcAddress}`);
 }
@@ -359,10 +494,17 @@ app.get("/api/config", (req, res) => {
     usdcAddress,
     explorerBaseUrl,
     relayerAddress,
+    relayerMode: ARC_PUBLIC_RELAYER_ENABLED ? "public-alpha" : (localSandbox ? "local-sandbox" : "read-only"),
     gasFeeBufferMultiplier: GAS_FEE_BUFFER_MULTIPLIER,
     localSandbox,
     exposesPrivateKeys: false,
     capabilities: currentCapabilities(),
+    publicRelayer: {
+      enabled: ARC_PUBLIC_RELAYER_ENABLED,
+      closeRequiresWallet: true,
+      settleRequiresWallet: true,
+      caps: ARC_PUBLIC_RELAYER_ENABLED ? publicRelayerCaps() : null,
+    },
     presets: {
       agentAddress: localSandbox ? "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" : "", // Hardhat Account #1
       merchantAddress: localSandbox ? "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" : "", // Hardhat Account #2
@@ -395,6 +537,61 @@ app.get("/api/paycard/:id", async (req, res) => {
       residualDeltaRecipient: card.residualDeltaRecipient,
       operationalStatus: Number(card.operationalStatus) === 0 ? "Active" : "Terminated",
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2b. Durable stream history (non-authoritative projection from the gateway).
+//     These read the persistent store on disk so receipts/state survive a
+//     dashboard session and a gateway restart. They never override the Vault.
+app.get("/api/streams", (req, res) => {
+  try {
+    const filter: StreamQueryFilter = {};
+    const { payer, recipient, workflow, workflowId, status } = req.query;
+    if (typeof payer === "string" && payer) filter.payer = payer;
+    if (typeof recipient === "string" && recipient) filter.recipient = recipient;
+    const wf = (workflow ?? workflowId);
+    if (typeof wf === "string" && wf) filter.workflowId = wf;
+    if (typeof status === "string" && status) {
+      const allowed: PaycardStatus[] = ["Active", "PendingSettlement", "Terminated"];
+      if (!allowed.includes(status as PaycardStatus)) {
+        return res.status(400).json({ error: `Invalid status; expected one of ${allowed.join(", ")}` });
+      }
+      filter.status = status as PaycardStatus;
+    }
+    const streams = streamReader.listStreams(filter);
+    res.json({ authoritative: false, disclaimer: STREAM_HISTORY_DISCLAIMER, count: streams.length, streams });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/streams/:paycardId/history", (req, res) => {
+  try {
+    const paycardId = req.params.paycardId;
+    if (!ethers.isHexString(paycardId, 32)) {
+      return res.status(400).json({ error: "Invalid paycardId; expected bytes32 hex" });
+    }
+    const state = streamReader.getStream(paycardId);
+    const events = streamReader.getStreamHistory(paycardId);
+    if (!state && events.length === 0) {
+      return res.status(404).json({ error: "No indexed history for this Paycard Stream", paycardId });
+    }
+    res.json({ authoritative: false, disclaimer: STREAM_HISTORY_DISCLAIMER, paycardId, state: state ?? null, events });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/workflows/:id", (req, res) => {
+  try {
+    const workflowId = req.params.id;
+    if (!workflowId) {
+      return res.status(400).json({ error: "Missing workflowId" });
+    }
+    const result = streamReader.getWorkflow(workflowId);
+    res.json({ authoritative: false, disclaimer: STREAM_HISTORY_DISCLAIMER, ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -444,6 +641,69 @@ app.get("/api/nonce/:payer/:channel", async (req, res) => {
   }
 });
 
+app.get("/api/paycards/recover", apiLimiter, async (req, res) => {
+  try {
+    const payer = req.query.payer ? String(req.query.payer) : undefined;
+    const recipient = req.query.recipient ? String(req.query.recipient) : undefined;
+    const metadataHash = req.query.metadataHash ? String(req.query.metadataHash) : undefined;
+    if (!payer && !recipient) {
+      return res.status(400).json({ error: "payer or recipient is required" });
+    }
+    if (payer && !ethers.isAddress(payer)) {
+      return res.status(400).json({ error: "Invalid payer address" });
+    }
+    if (recipient && !ethers.isAddress(recipient)) {
+      return res.status(400).json({ error: "Invalid recipient address" });
+    }
+    if (metadataHash && !ethers.isHexString(metadataHash, 32)) {
+      return res.status(400).json({ error: "metadataHash must be a bytes32 hex string" });
+    }
+
+    const latestBlock = await provider.getBlockNumber();
+    const requestedFromBlock = parseRecoveryBlockParam(req.query.fromBlock, "fromBlock");
+    const requestedToBlock = parseRecoveryBlockParam(req.query.toBlock, "toBlock");
+    const fromBlock = requestedFromBlock ?? Math.max(0, latestBlock - PAYCARD_RECOVERY_DEFAULT_LOOKBACK_BLOCKS);
+    const toBlock = requestedToBlock ?? latestBlock;
+    const limit = parseRecoveryLimitParam(req.query.limit);
+    if (toBlock < fromBlock) {
+      return res.status(400).json({ error: "toBlock must be greater than or equal to fromBlock" });
+    }
+    if (toBlock - fromBlock > PAYCARD_RECOVERY_MAX_BLOCK_SPAN) {
+      return res.status(400).json({
+        error: `Recovery block range exceeds ${PAYCARD_RECOVERY_MAX_BLOCK_SPAN} blocks`,
+      });
+    }
+
+    const results = await recoverPaycardsFromLogs(provider, clearinghouseAddress, {
+      payer,
+      recipient,
+      metadataHash,
+      fromBlock,
+      toBlock,
+      limit,
+      chunkSize: PAYCARD_RECOVERY_CHUNK_SIZE,
+    });
+
+    res.json({
+      chainId,
+      clearinghouseAddress,
+      filters: {
+        payer: payer ? ethers.getAddress(payer) : undefined,
+        recipient: recipient ? ethers.getAddress(recipient) : undefined,
+        metadataHash,
+      },
+      fromBlock,
+      toBlock,
+      limit,
+      results,
+    });
+  } catch (err: any) {
+    const message = err?.message || "Paycard recovery failed";
+    const status = /must be|invalid|exceeds|required/i.test(message) ? 400 : 500;
+    res.status(status).json({ error: message });
+  }
+});
+
 // 4. Open Paycard Channel via local relayer
 //    - Rate-limited via apiLimiter
 //    - EnvelopeHeaderParser extracts Authorization header as alternative input
@@ -474,6 +734,14 @@ app.post("/api/paycard/open", apiLimiter, envelopeHeaderParser, async (req, res)
       workflowId,
     } = validation.value;
     const { intent, envelopeSignature } = decoded;
+    const capReasons = validatePublicRelayerCaps(intent);
+    if (capReasons.length) {
+      return res.status(400).json({
+        error: "Public relayer cap exceeded",
+        reasons: capReasons,
+        caps: publicRelayerCaps(),
+      });
+    }
 
     console.log(`Relayer: Received request to open paycard ${intent.paycardId}`);
 
@@ -518,7 +786,7 @@ app.post("/api/paycard/open", apiLimiter, envelopeHeaderParser, async (req, res)
             "Retrying with fresh nonce…"
         );
         if (!relayerWallet) throw new Error("Relayer wallet is unavailable");
-        const freshNonce = await provider.getTransactionCount(relayerWallet.address, "pending");
+        const freshNonce = await provider.getTransactionCount(relayerAddress, "pending");
         tx = await submitTx({ nonce: freshNonce });
         console.log(`Relayer [MempoolRejectionListener]: Retry submitted with nonce ${freshNonce}.`);
       } else {
@@ -569,8 +837,15 @@ app.post("/api/paycard/drip", apiLimiter, async (req, res) => {
   try {
     if (forbiddenCapability(res, "canGatewaySettle", "Gateway drip settlement")) return;
     const { paycardId } = req.body;
-    if (!paycardId) {
-      return res.status(400).json({ error: "Missing paycardId" });
+    if (!paycardId || !ethers.isHexString(paycardId, 32)) {
+      return res.status(400).json({ error: "paycardId must be a bytes32 hex string" });
+    }
+    const card = await clearinghouseContract.registry(paycardId);
+    if (card.payer === ethers.ZeroAddress) {
+      return res.status(404).json({ error: "Paycard not found" });
+    }
+    if (Number(card.operationalStatus) !== 0) {
+      return res.status(400).json({ error: "Paycard is not active" });
     }
 
     console.log(`Relayer: Triggering processDripSettle for ${paycardId}`);
@@ -722,7 +997,7 @@ app.get("/api/demo/protected-resource", async (req, res) => {
       {
         expectedChainId: chainId,
         expectedVault: clearinghouseAddress,
-        expectedService: relayerWallet.address,
+        expectedService: relayerAddress,
         expectedServiceOrigin: SERVICE_ORIGIN,
         expectedScope: PROTECTED_SCOPE,
       },

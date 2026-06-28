@@ -14,6 +14,7 @@ import { PayloadSerializationError, SignatureVerificationError } from './errors'
 import { deserializeEnvelope, serializeEnvelope } from './serialization';
 
 export const OPENRAILS_HUB_ABI = [
+  'event PaycardProvisioned(bytes32 indexed paycardId,address indexed payer,address indexed recipient,bytes32 metadataHash,uint256 poolAllocation,uint256 flowVelocityPerSecond,uint256 genesisTimestamp,uint256 lifespanSeconds)',
   'event SettlementFlushed(bytes32 indexed paycardId,address indexed recipient,uint256 amountWithdrawn)',
   'event ResidualDeltaReclaimed(bytes32 indexed paycardId,address indexed recoveryVault,uint256 varianceSwept)',
   'function registry(bytes32) view returns (address payer,address recipient,bytes32 metadataHash,uint256 totalAllocationPool,uint256 availableBalance,uint256 flowVelocityPerSecond,uint256 genesisTimestamp,uint256 lifespanSeconds,uint256 lastCheckpointEpoch,address residualDeltaRecipient,uint8 operationalStatus)',
@@ -65,6 +66,36 @@ export interface PaycardView {
   lastCheckpointEpoch: number;
   residualDeltaRecipient: string;
   operationalStatus: 'Active' | 'Terminated';
+}
+
+export interface RecoverPaycardsFromLogsOptions {
+  payer?: string;
+  recipient?: string;
+  metadataHash?: string;
+  fromBlock?: number;
+  toBlock?: number;
+  limit?: number;
+  chunkSize?: number;
+}
+
+export interface RecoveredPaycardProvisioning {
+  paycardId: string;
+  payer: string;
+  recipient: string;
+  metadataHash: string;
+  poolAllocation: string;
+  flowVelocityPerSecond: string;
+  genesisTimestamp: number;
+  lifespanSeconds: number;
+  blockNumber: number;
+  transactionHash: string;
+  logIndex: number;
+}
+
+export interface RecoveredPaycard {
+  paycardId: string;
+  registry: PaycardView;
+  provisioned: RecoveredPaycardProvisioning;
 }
 
 export async function assertOpenRailsNetwork(
@@ -158,6 +189,119 @@ export async function readPaycard(
     residualDeltaRecipient: card.residualDeltaRecipient,
     operationalStatus: Number(card.operationalStatus) === 0 ? 'Active' : 'Terminated',
   };
+}
+
+function encodeAddressTopic(address?: string): string | null {
+  if (!address) return null;
+  return ethers.zeroPadValue(ethers.getAddress(address), 32);
+}
+
+function assertBytes32Hex(value: string, name: string): void {
+  if (!ethers.isHexString(value, 32)) {
+    throw new Error(`${name} must be a bytes32 hex string`);
+  }
+}
+
+function assertRecoveryAddress(address: string | undefined, name: string): void {
+  if (address !== undefined && !ethers.isAddress(address)) {
+    throw new Error(`${name} must be an EVM address`);
+  }
+}
+
+export async function recoverPaycardsFromLogs(
+  provider: ethers.Provider,
+  hubAddress: string,
+  options: RecoverPaycardsFromLogsOptions,
+): Promise<RecoveredPaycard[]> {
+  if (!ethers.isAddress(hubAddress)) {
+    throw new Error('hubAddress must be an EVM address');
+  }
+  assertRecoveryAddress(options.payer, 'payer');
+  assertRecoveryAddress(options.recipient, 'recipient');
+  if (!options.payer && !options.recipient) {
+    throw new Error('payer or recipient is required');
+  }
+  if (options.metadataHash) {
+    assertBytes32Hex(options.metadataHash, 'metadataHash');
+  }
+
+  const latestBlock = await provider.getBlockNumber();
+  const fromBlock = options.fromBlock ?? 0;
+  const toBlock = options.toBlock ?? latestBlock;
+  if (!Number.isInteger(fromBlock) || fromBlock < 0) {
+    throw new Error('fromBlock must be a non-negative integer');
+  }
+  if (!Number.isInteger(toBlock) || toBlock < fromBlock) {
+    throw new Error('toBlock must be an integer greater than or equal to fromBlock');
+  }
+  const limit = options.limit ?? 25;
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error('limit must be a positive integer');
+  }
+  const chunkSize = options.chunkSize ?? 5_000;
+  if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
+    throw new Error('chunkSize must be a positive integer');
+  }
+
+  const iface = new ethers.Interface(OPENRAILS_HUB_ABI);
+  const event = iface.getEvent('PaycardProvisioned');
+  if (!event) throw new Error('PaycardProvisioned ABI fragment is missing');
+
+  const results: RecoveredPaycard[] = [];
+  const seenPaycardIds = new Set<string>();
+  const metadataHash = options.metadataHash?.toLowerCase();
+
+  for (let chunkTo = Math.min(toBlock, latestBlock); chunkTo >= fromBlock && results.length < limit;) {
+    const chunkFrom = Math.max(fromBlock, chunkTo - chunkSize + 1);
+    const logs = await provider.getLogs({
+      address: ethers.getAddress(hubAddress),
+      fromBlock: chunkFrom,
+      toBlock: chunkTo,
+      topics: [
+        event.topicHash,
+        null,
+        encodeAddressTopic(options.payer),
+        encodeAddressTopic(options.recipient),
+      ],
+    });
+
+    for (const log of logs.reverse()) {
+      if (results.length >= limit) break;
+      const parsed = iface.parseLog({ topics: log.topics as string[], data: log.data });
+      if (!parsed || parsed.name !== 'PaycardProvisioned') continue;
+      const eventMetadataHash = String(parsed.args.metadataHash);
+      if (metadataHash && eventMetadataHash.toLowerCase() !== metadataHash) continue;
+      const paycardId = String(parsed.args.paycardId);
+      const paycardKey = paycardId.toLowerCase();
+      if (seenPaycardIds.has(paycardKey)) continue;
+
+      const registry = await readPaycard(provider, hubAddress, paycardId);
+      if (registry.payer === ethers.ZeroAddress) continue;
+      seenPaycardIds.add(paycardKey);
+      results.push({
+        paycardId,
+        registry,
+        provisioned: {
+          paycardId,
+          payer: parsed.args.payer,
+          recipient: parsed.args.recipient,
+          metadataHash: eventMetadataHash,
+          poolAllocation: parsed.args.poolAllocation.toString(),
+          flowVelocityPerSecond: parsed.args.flowVelocityPerSecond.toString(),
+          genesisTimestamp: Number(parsed.args.genesisTimestamp),
+          lifespanSeconds: Number(parsed.args.lifespanSeconds),
+          blockNumber: log.blockNumber,
+          transactionHash: log.transactionHash,
+          logIndex: log.index,
+        },
+      });
+    }
+
+    if (chunkFrom === fromBlock) break;
+    chunkTo = chunkFrom - 1;
+  }
+
+  return results;
 }
 
 export async function readNonce(

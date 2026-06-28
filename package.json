@@ -1,9 +1,12 @@
 {
   "name": "openrails-v1-substrate",
   "version": "1.0.0",
-  "description": "OpenRails V1 - Intent-Driven Clearing & Settlement Infrastructure for the Machine Economy",
+  "description": "OpenRails V1 - Intent-driven clearing and settlement infrastructure for streamed work on Arc. A payment rail for humans or agents: sign an intent, clear into a bounded Vault, settle as work is performed, recover residual.",
   "main": "sdk/dist/index.js",
   "types": "sdk/dist/index.d.ts",
+  "bin": {
+    "openrails": "sdk/dist/cli.js"
+  },
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
@@ -15,6 +18,7 @@
     "dev": "vite dashboard",
     "stream-gateway": "ts-node stream-gateway/index.ts",
     "launch:check": "ts-node scripts/launch-check.ts",
+    "smoke:sdk:arc": "ts-node scripts/sdk-arc-smoke.ts",
     "deploy:openrails": "hardhat run scripts/deploy-openrails.ts --network arcTestnet",
     "smoke:testnet": "hardhat run scripts/smoke-openrails-testnet.ts --network arcTestnet"
   },

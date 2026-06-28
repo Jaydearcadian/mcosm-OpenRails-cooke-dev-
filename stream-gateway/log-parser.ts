@@ -20,6 +20,8 @@ export interface ParsedEvent {
   blockTimestamp?: number;
   /** Transaction hash that emitted the log. */
   transactionHash: string;
+  /** Index of this log within its block (used for idempotency keys). */
+  logIndex: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,12 +86,16 @@ export class LogIngestionParser {
       const paycardId: string =
         (args["paycardId"] as string) ?? log.topics[1] ?? "0x";
 
+      const logIndex =
+        (log as any).logIndex ?? (log as any).index ?? 0;
+
       return {
         eventName: parsed.name,
         paycardId,
         args,
         blockNumber: log.blockNumber,
         transactionHash: log.transactionHash,
+        logIndex: Number(logIndex),
       };
     } catch {
       // Log doesn't match any known event – not an error, just irrelevant.

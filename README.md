@@ -1,6 +1,18 @@
 # OpenRails V1 on Arc Network
 
-**OpenRails V1** is an intent-driven clearing and settlement infrastructure engineered for the machine economy. Built for the **Lepton Agents Hackathon** (Canteen × Circle × Arc), it pairs off-chain EIP-712 Permission Envelopes with an onchain Vault contract that verifies signatures, escrows USDC, settles earned value, and returns residual buffers.
+**OpenRails is intent-driven clearing and settlement infrastructure for streamed work on Arc.**
+
+In plain terms, it's a payment rail: a payer signs a payment intent, it **clears** into a bounded onchain Vault, value **settles** as work is performed, and unused residual returns when the stream ends — usable by **humans or agents**. Arc provides the fast, low-cost settlement environment; OpenRails provides the intent, escrow, streaming, receipt, and recovery layer on top. Built for the **Lepton Agents Hackathon** (Canteen × Circle × Arc), it pairs off-chain EIP-712 Permission Envelopes with an onchain Vault contract that verifies signatures, escrows USDC, settles earned value, and returns residual buffers.
+
+Core pieces:
+
+* **RailsFlow** — merchant/request link for asking someone to pay for work.
+* **RailsCard** — payer/value link for sending claimable stream value.
+* **Paycard Stream** — the onchain Vault row that escrows funds and tracks settlement.
+* **Nonce Lane** — replay/concurrency protection for parallel agent payments.
+* **Receipts** — verifiable proof artifacts for open, settlement, recovery, workflow, or profile timelines.
+
+The agent economy and the creator economy are the two flagship verticals; the rail itself is vertical-agnostic.
 
 ---
 
@@ -252,4 +264,4 @@ The smoke script validates the registry/env, payer balance, hub allowance, and r
 
 ---
 
-**OpenRails V1** // *Intent-Driven Clearing & Settlement Infrastructure for the Machine Economy.*
+**OpenRails V1** // *Intent-Driven Clearing & Settlement Infrastructure for Streamed Work on Arc.*

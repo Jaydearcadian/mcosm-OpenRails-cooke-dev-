@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OpenRails V1 - Vault Settlement Dashboard</title>
-  <meta name="description" content="A local OpenRails V1 playground for EIP-712 Permission Envelopes, Vault-backed escrow, RailsFlow, RailsCard, and STN-Delta buffer recovery.">
+  <title>OpenRails V1 - Clearing &amp; Settlement Dashboard</title>
+  <meta name="description" content="OpenRails: intent-driven clearing and settlement infrastructure for streamed work on Arc. A payment rail for EIP-712 intents, Vault-backed escrow, RailsFlow, RailsCard, streaming settlement, and STN-Delta residual recovery.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -17,38 +17,94 @@
         <span class="logo-pill">OPENRAILS V1</span>
         <span class="network-badge" id="network-status">Local Hardhat Sandbox</span>
       </div>
-      <h1 class="main-title">OpenRails V1 Vault Settlement Dashboard</h1>
-      <p class="tagline">Intent-Driven Clearing & Settlement Infrastructure for the Machine Economy</p>
-      <div class="wallet-strip" id="wallet-strip">
-        <div>
-          <span class="wallet-label">Wallet</span>
-          <span class="wallet-value" id="wallet-status">Disconnected</span>
-        </div>
-        <div>
-          <span class="wallet-label">Balance</span>
-          <span class="wallet-value" id="wallet-balance">—</span>
-        </div>
-        <div>
-          <span class="wallet-label">Allowance</span>
-          <span class="wallet-value" id="wallet-allowance">—</span>
-        </div>
-        <div class="wallet-actions">
-          <button type="button" id="btn-connect-wallet" class="btn-accent">Connect Wallet</button>
-          <button type="button" id="btn-switch-wallet-network" class="btn-secondary hidden">Switch/Add Arc Testnet</button>
-        </div>
-        <div class="wallet-hint hidden" id="wallet-network-hint"></div>
-      </div>
+      <h1 class="main-title">OpenRails — Clearing &amp; Settlement for Streamed Work</h1>
+      <p class="tagline">Intent-driven clearing and settlement infrastructure on Arc. In plain terms, a payment rail: sign an intent, clear it into a bounded Vault, settle value as work is performed, recover residual. Task-first control room for RailsFlow, RailsCard, Vault state, receipts, recovery, and x402 proof.</p>
     </div>
   </header>
 
-  <main class="dashboard-grid">
-    <!-- COLUMN 1: SDK PLAYGROUND & INTENT GENERATION -->
-    <section class="grid-card offchain-sdk" id="sdk-section">
+  <main class="dashboard-grid task-dashboard">
+    <section class="grid-card task-panel wallet-readiness" id="wallet-readiness-section" aria-labelledby="wallet-readiness-title">
       <div class="card-header">
-        <div class="header-icon">SDK</div>
+        <div class="header-icon">01</div>
         <div>
-          <h2>1. Lepton Agent SDK Runtime</h2>
-          <p class="subtitle">Generate & sign off-chain cryptographic Permission Envelopes</p>
+          <p class="panel-eyebrow">Start here</p>
+          <h2 id="wallet-readiness-title">Wallet Readiness</h2>
+          <p class="subtitle">Confirm wallet, Arc network, balance, and bounded allowance before any write.</p>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="wallet-strip" id="wallet-strip" aria-live="polite">
+          <div>
+            <span class="wallet-label">Wallet</span>
+            <span class="wallet-value" id="wallet-status">Disconnected</span>
+          </div>
+          <div>
+            <span class="wallet-label">Balance</span>
+            <span class="wallet-value" id="wallet-balance">—</span>
+          </div>
+          <div>
+            <span class="wallet-label">Allowance</span>
+            <span class="wallet-value" id="wallet-allowance">—</span>
+          </div>
+          <div class="wallet-actions">
+            <button type="button" id="btn-connect-wallet" class="btn-accent">Connect Wallet</button>
+            <button type="button" id="btn-switch-wallet-network" class="btn-secondary hidden">Switch/Add Arc Testnet</button>
+          </div>
+          <div class="wallet-hint hidden" id="wallet-network-hint"></div>
+        </div>
+
+        <div class="readiness-notes">
+          <div>
+            <strong>Disconnected</strong>
+            <span>Prepare a local sandbox key or connect an Arc-compatible wallet.</span>
+          </div>
+          <div>
+            <strong>Wrong network</strong>
+            <span>Switch/add Arc testnet before approval, signing, settlement, or close.</span>
+          </div>
+          <div>
+            <strong>Ready</strong>
+            <span>Balance and allowance are readable. Writes still require explicit wallet approval.</span>
+          </div>
+        </div>
+
+        <div class="global-treasuries-section">
+          <h3>USDC Treasuries Tracker</h3>
+          <div class="treasury-grid">
+            <div class="treasury-card">
+              <span class="label">Agent Wallet</span>
+              <span class="value" id="balance-agent">$0.00</span>
+            </div>
+            <div class="treasury-card">
+              <span class="label">Merchant Wallet</span>
+              <span class="value" id="balance-merchant">$0.00</span>
+            </div>
+            <div class="treasury-card">
+              <span class="label">Recovery Vault</span>
+              <span class="value" id="balance-recovery">$0.00</span>
+            </div>
+            <div class="treasury-card">
+              <span class="label">Clearinghouse Contract</span>
+              <span class="value" id="balance-contract">$0.00</span>
+            </div>
+          </div>
+          <div class="mint-faucet-box">
+            <span>Need sandbox USDC?</span>
+            <button type="button" id="btn-mint-faucet" class="btn-text">Mint $100 USDC to Agent</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TASK 2: REQUEST TERMS & INTENT GENERATION -->
+    <section class="grid-card task-panel offchain-sdk" id="sdk-section" aria-labelledby="request-stream-title">
+      <div class="card-header">
+        <div class="header-icon">02</div>
+        <div>
+          <p class="panel-eyebrow">Define terms</p>
+          <h2 id="request-stream-title">Request Stream</h2>
+          <p class="subtitle">Build RailsFlow requests or RailsCard value links with hash-bound metadata and nonce lanes.</p>
         </div>
       </div>
 
@@ -79,7 +135,7 @@
 
           <div class="form-row split">
             <div class="form-group">
-              <label for="intent-recipient">Merchant Address</label>
+              <label for="intent-recipient">Merchant / Recipient Address</label>
               <input type="text" id="intent-recipient" placeholder="0x...">
             </div>
             <div class="form-group">
@@ -110,6 +166,7 @@
                 <option value="railscard_recipient_bound">RailsCard recipient-bound</option>
               </select>
               <span class="input-helper">Bearer is first-holder-wins. Recipient-bound signs a fixed wallet.</span>
+              <p class="rail-mode-guide" id="rail-mode-guide" aria-live="polite">RailsFlow is an unsigned merchant payment request until a payer reviews and signs it.</p>
             </div>
             <div class="form-group">
               <label for="intent-nonce-channel">Nonce Channel</label>
@@ -146,9 +203,6 @@
             </div>
           </div>
 
-          <button type="button" id="btn-generate-envelope" class="btn-primary w-full">
-            Generate & Sign Permission Envelope
-          </button>
           <button type="button" id="btn-create-request-link" class="btn-secondary w-full">
             Create RailsFlow Request Link / QR
           </button>
@@ -176,38 +230,60 @@
             <span id="share-artifact-type">OpenRails Link Artifact</span>
             <button id="btn-copy-share-link" class="btn-text">Copy Link</button>
           </div>
-          <p class="artifact-warning" id="share-artifact-warning">Review this artifact before sharing.</p>
+          <p class="artifact-warning" id="share-artifact-warning" aria-live="polite">Review this artifact before sharing.</p>
           <input type="text" id="share-link-output" readonly>
           <div class="qr-panel">
             <canvas id="share-qr-canvas" width="180" height="180" aria-label="OpenRails QR code"></canvas>
           </div>
           <details>
-            <summary>Request interceptor preview</summary>
+            <summary>Review before sharing</summary>
             <pre><code id="interceptor-preview" class="jetbrains-mono"></code></pre>
           </details>
         </div>
       </div>
     </section>
 
-    <!-- COLUMN 2: LOCAL RELAYER -->
-    <section class="grid-card sponsored-relayer" id="relayer-section">
+    <!-- TASK 3: PAY OR OPEN STREAM -->
+    <section class="grid-card task-panel sponsored-relayer" id="relayer-section" aria-labelledby="pay-stream-title">
       <div class="card-header">
-        <div class="header-icon">API</div>
+        <div class="header-icon">03</div>
         <div>
-          <h2>2. Local Relayer Gateway</h2>
-          <p class="subtitle">Local sandbox transaction submission to the Vault</p>
+          <p class="panel-eyebrow">Authorize payment</p>
+          <h2 id="relayer-title">Pay Stream / Local Relayer Gateway</h2>
+          <p class="subtitle" id="relayer-subtitle">Submit a signed bearer token or wallet-open the Paycard Stream.</p>
         </div>
       </div>
 
       <div class="card-body flex-col justify-between">
         <div>
           <div class="info-alert">
-            <p><strong>Relayer Transaction Flow:</strong> The dashboard submits the off-chain signed envelope to the Gateway. The local relayer submits the transaction to the Vault. Circle Paymaster support is future-facing in this sandbox.</p>
+            <p id="relayer-flow-copy"><strong>Relayer Transaction Flow:</strong> The dashboard submits the off-chain signed envelope to the Gateway. The local relayer submits the transaction to the Vault. Circle Paymaster support is future-facing in this sandbox.</p>
+          </div>
+          <div class="relayer-cap-panel hidden" id="relayer-cap-panel">
+            <strong>Public relayer caps</strong>
+            <span id="relayer-cap-copy">Open is relayed. Settlement and close require payer or recipient wallet.</span>
+          </div>
+
+          <div class="pay-action-panel">
+            <div class="arc-action-stack hidden" id="arc-action-stack">
+              <button type="button" id="btn-approve-arc-spend" class="btn-secondary w-full">
+                1. Approve Bounded USDC
+              </button>
+              <button type="button" id="btn-sign-arc-envelope" class="btn-primary w-full">
+                2. Sign OpenRails Envelope
+              </button>
+              <button type="button" id="btn-open-arc-paycard" class="btn-accent w-full" disabled>
+                3. Open Paycard Stream
+              </button>
+            </div>
+            <button type="button" id="btn-generate-envelope" class="btn-primary w-full">
+              Generate & Sign Permission Envelope
+            </button>
           </div>
 
           <div class="form-group">
-            <label for="relayer-input-token">Stateless Base64 Bearer Token</label>
-            <textarea id="relayer-input-token" placeholder="Paste Base64 Permission Envelope here..."></textarea>
+            <label for="relayer-input-token">Executable Base64 Bearer Token</label>
+            <textarea id="relayer-input-token" placeholder="Paste signed Base64 Permission Envelope here..."></textarea>
           </div>
 
           <button type="button" id="btn-submit-relayer" class="btn-accent w-full" disabled>
@@ -223,26 +299,27 @@
           <div class="receipt-details font-mono">
             <div>Tx Hash: <a id="receipt-tx-link" href="#" target="_blank">0x...</a></div>
             <div>Status: <span id="receipt-status">Mined</span></div>
-            <div>Submission: <span class="gas-zero">Local relayer sandbox</span></div>
+            <div>Submission: <span id="receipt-submission-mode" class="gas-zero">Local relayer sandbox</span></div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- COLUMN 3: ON-CHAIN STATES & DYNAMIC DRIFT -->
-    <section class="grid-card onchain-ledger" id="ledger-section">
+    <!-- TASK 4: STREAM STATE & LEDGER CONTROLS -->
+    <section class="grid-card task-panel onchain-ledger" id="ledger-section" aria-labelledby="stream-state-title">
       <div class="card-header">
-        <div class="header-icon">V</div>
+        <div class="header-icon">04</div>
         <div>
-          <h2>3. Arc Vault Ledger</h2>
-          <p class="subtitle">Authoritative escrow, settlement, and STN-Delta recovery</p>
+          <p class="panel-eyebrow">Observe and operate</p>
+          <h2 id="stream-state-title">Stream State</h2>
+          <p class="subtitle">Read authoritative Arc Vault escrow, settlement progress, and STN-Delta recovery controls.</p>
         </div>
       </div>
 
       <div class="card-body">
         <div class="paycard-state-card" id="paycard-active-display">
           <div class="card-empty-state" id="paycard-empty-state">
-            <p>No active Paycard provisioned. Deploy one using the SDK and Relayer flow.</p>
+            <p>No active Paycard Stream yet. Define terms in Request Stream, then authorize payment in Pay Stream.</p>
           </div>
 
           <div class="card-active-state hidden" id="paycard-active-state">
@@ -301,7 +378,7 @@
                 Recover Buffer and Close
               </button>
             </div>
-            <p class="artifact-warning" id="ledger-action-status">Manual controls are ready.</p>
+            <p class="artifact-warning" id="ledger-action-status" aria-live="polite">Manual controls are ready.</p>
 
             <div class="access-panel hidden" id="access-panel">
               <h3>Paid Service Access Credential</h3>
@@ -342,7 +419,105 @@
           </div>
         </div>
 
-        <div class="judge-mode-grid">
+      </div>
+    </section>
+
+    <!-- TASK 5: RECEIPTS AND RECOVERY -->
+    <section class="grid-card task-panel receipts-recovery" id="receipts-recovery-section" aria-labelledby="receipts-recovery-title">
+      <div class="card-header">
+        <div class="header-icon">05</div>
+        <div>
+          <p class="panel-eyebrow">Prove and restore</p>
+          <h2 id="receipts-recovery-title">Receipts and Recovery</h2>
+          <p class="subtitle">Copy OpenRails proof artifacts and recover Paycard IDs from receipts, links, envelopes, or wallet logs.</p>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="judge-mode-grid receipt-recovery-grid">
+          <div class="judge-panel receipt-panel">
+            <div class="judge-panel-header">
+              <span class="judge-kicker">Proof Artifact</span>
+              <h3>OpenRails Receipt</h3>
+            </div>
+            <p id="receipt-summary" aria-live="polite">Open, settle, or flush a Paycard Stream to generate a receipt.</p>
+            <div class="ledger-actions">
+              <button type="button" id="btn-copy-receipt" class="btn-secondary" disabled>Copy Receipt JSON</button>
+            </div>
+            <div class="code-box-wrapper receipt-output">
+              <pre><code id="receipt-json-output" class="jetbrains-mono"></code></pre>
+            </div>
+          </div>
+          <div class="judge-panel recovery-panel">
+            <div class="judge-panel-header">
+              <span class="judge-kicker">Paycard Recovery</span>
+              <h3>Recover Paycard ID</h3>
+            </div>
+            <p class="input-helper">Paste a receipt, OpenRails link, or envelope, or search onchain by wallet.</p>
+            <div class="form-group">
+              <label for="recovery-artifact-input">Local Artifact</label>
+              <textarea id="recovery-artifact-input" placeholder="Paste receipt JSON, OpenRails link, or Base64 envelope..."></textarea>
+            </div>
+            <div class="ledger-actions">
+              <button type="button" id="btn-recover-artifact" class="btn-secondary">Recover from Artifact</button>
+            </div>
+            <div class="form-row split">
+              <div class="form-group">
+                <label for="recovery-wallet-input">Wallet Search</label>
+                <input type="text" id="recovery-wallet-input" placeholder="0x... payer or recipient">
+              </div>
+              <div class="form-group">
+                <label for="recovery-metadata-input">Metadata Hash</label>
+                <input type="text" id="recovery-metadata-input" placeholder="optional 0x...">
+              </div>
+            </div>
+            <div class="form-row split">
+              <div class="form-group">
+                <label for="recovery-from-block">From Block</label>
+                <input type="number" id="recovery-from-block" placeholder="optional" min="0">
+              </div>
+              <div class="form-group">
+                <label for="recovery-to-block">To Block</label>
+                <input type="number" id="recovery-to-block" placeholder="optional" min="0">
+              </div>
+            </div>
+            <div class="ledger-actions">
+              <button type="button" id="btn-recover-wallet" class="btn-accent">Search Onchain</button>
+            </div>
+            <p class="artifact-warning" id="recovery-status" aria-live="polite">Recovery tools are ready.</p>
+            <div class="recovery-results" id="recovery-results"></div>
+          </div>
+          <div class="judge-panel history-panel">
+            <div class="judge-panel-header">
+              <span class="judge-kicker">Indexed History</span>
+              <h3>Stream History</h3>
+            </div>
+            <p class="input-helper">Durable, restart-surviving event timeline from the stream gateway index. Non-authoritative; the onchain Vault remains the source of truth.</p>
+            <div class="form-group">
+              <label for="history-paycard-input">Paycard ID</label>
+              <input type="text" id="history-paycard-input" placeholder="0x... (auto-fills from active stream)">
+            </div>
+            <div class="ledger-actions">
+              <button type="button" id="btn-load-history" class="btn-secondary">Load Indexed History</button>
+            </div>
+            <p class="artifact-warning" id="history-status" aria-live="polite">Open a Paycard Stream and run the stream gateway to index events.</p>
+            <div class="recovery-results" id="history-results"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TASK 6: AGENT AND X402 PROOF -->
+    <section class="grid-card task-panel agent-proof" id="agent-proof-section" aria-labelledby="agent-proof-title">
+      <div class="card-header">
+        <div class="header-icon">06</div>
+        <div>
+          <p class="panel-eyebrow">Explain the run</p>
+          <h2 id="agent-proof-title">Agent/x402 Proof</h2>
+          <p class="subtitle">Show agent rationale, session metrics, tester flow, and Circle x402 bridge evidence without claiming Vault escrow early.</p>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="judge-mode-grid agent-proof-grid">
           <div class="judge-panel agent-panel">
             <div class="judge-panel-header">
               <span class="judge-kicker">30% Agency</span>
@@ -353,7 +528,6 @@
               <div class="trace-item">Prepare bounded spend authority.</div>
             </div>
           </div>
-
           <div class="judge-panel traction-panel">
             <div class="judge-panel-header">
               <span class="judge-kicker">30% Traction</span>
@@ -369,21 +543,22 @@
             </div>
             <p class="input-helper" id="metric-recent-tx">No session transactions recorded yet.</p>
           </div>
-
-          <div class="judge-panel receipt-panel">
+          <div class="judge-panel tester-panel">
             <div class="judge-panel-header">
-              <span class="judge-kicker">Proof Artifact</span>
-              <h3>OpenRails Receipt</h3>
+              <span class="judge-kicker">External Testers</span>
+              <h3>Try V1 Now</h3>
             </div>
-            <p id="receipt-summary">Open, settle, or flush a Paycard Stream to generate a receipt.</p>
-            <div class="ledger-actions">
-              <button type="button" id="btn-copy-receipt" class="btn-secondary" disabled>Copy Receipt JSON</button>
-            </div>
-            <div class="code-box-wrapper receipt-output">
-              <pre><code id="receipt-json-output" class="jetbrains-mono"></code></pre>
-            </div>
+            <p class="input-helper">Arc testnet is wallet-only for state changes. The API surface stays read-only for testers.</p>
+            <div class="tester-flow-status" id="tester-flow-status">Mode: read-only tester surface.</div>
+            <ol class="tester-checklist">
+              <li>Connect wallet and switch/add Arc testnet.</li>
+              <li>Verify USDC balance and bounded allowance.</li>
+              <li>Open RailsFlow or RailsCard from the dashboard or SDK wallet helpers.</li>
+              <li>Settle, close, and copy the OpenRails receipt.</li>
+              <li>Recover lost Paycard IDs from receipt/link/envelope or onchain wallet search.</li>
+            </ol>
+            <p class="artifact-warning">SDK smoke: <code>npm run smoke:sdk:arc -- --wallet 0x...</code></p>
           </div>
-
           <div class="judge-panel x402-panel">
             <div class="judge-panel-header">
               <span class="judge-kicker">Bridge Proof</span>
@@ -398,7 +573,6 @@
               <pre><code id="x402-bridge-output" class="jetbrains-mono"></code></pre>
             </div>
           </div>
-
           <div class="judge-panel settings-panel">
             <div class="judge-panel-header">
               <span class="judge-kicker">Settings</span>
@@ -417,33 +591,6 @@
                 <li>Recover residual buffer and show traction metrics.</li>
               </ol>
             </div>
-          </div>
-        </div>
-
-        <!-- System Treasuries & Global Balances -->
-        <div class="global-treasuries-section">
-          <h3>USDC Treasuries Tracker</h3>
-          <div class="treasury-grid">
-            <div class="treasury-card">
-              <span class="label">Agent Wallet</span>
-              <span class="value" id="balance-agent">$0.00</span>
-            </div>
-            <div class="treasury-card">
-              <span class="label">Merchant Wallet</span>
-              <span class="value" id="balance-merchant">$0.00</span>
-            </div>
-            <div class="treasury-card">
-              <span class="label">Recovery Vault</span>
-              <span class="value" id="balance-recovery">$0.00</span>
-            </div>
-            <div class="treasury-card">
-              <span class="label">Clearinghouse Contract</span>
-              <span class="value" id="balance-contract">$0.00</span>
-            </div>
-          </div>
-          <div class="mint-faucet-box">
-            <span>Need USDC?</span>
-            <button type="button" id="btn-mint-faucet" class="btn-text">Mint $100 USDC to Agent</button>
           </div>
         </div>
       </div>

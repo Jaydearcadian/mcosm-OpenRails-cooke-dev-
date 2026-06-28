@@ -30,6 +30,7 @@ import {
   createPaymentReceipt,
   createResidualRecoveryReceipt,
   createSettlementReceipt,
+  parseReceipt,
   serializeReceipt,
 } from "../sdk/src/receipts";
 
@@ -57,8 +58,33 @@ const sessionMetrics = {
   txHashes: []
 };
 
+const RAIL_COPY = {
+  railsflow: {
+    title: "RailsFlow payment request",
+    guide: "RailsFlow starts as a merchant request. It cannot move funds until the payer reviews the Request Stream terms, signs, and explicitly opens a Paycard Stream.",
+    shareType: "Unsigned RailsFlow Request Link",
+    shareWarning: "Unsigned RailsFlow request. This is safe to review: no funds move until the payer signs and opens a Paycard Stream.",
+    nextStep: "Next: payer reviews terms, signs with wallet, then opens the Paycard Stream from Pay Stream."
+  },
+  railscard_bearer: {
+    title: "Bearer RailsCard value link",
+    guide: "Bearer RailsCard is a payer-signed bearer value link. Treat it like cash until claimed: first valid holder with the URL, QR, or executable token can redeem.",
+    shareType: "Bearer RailsCard Value Link",
+    shareWarning: "Bearer RailsCard value link. Treat like cash until claimed: anyone with this unclaimed link, QR, or token can redeem first.",
+    nextStep: "Next: enter the wallet that should claim this bearer RailsCard, then broadcast or submit from wallet."
+  },
+  railscard_recipient_bound: {
+    title: "Recipient-bound RailsCard value link",
+    guide: "Recipient-bound RailsCard is a payer-signed value link locked to one wallet. It cannot be redirected to another recipient after signing.",
+    shareType: "Recipient-bound RailsCard Value Link",
+    shareWarning: "Recipient-bound RailsCard. Only the signed recipient wallet can redeem this value link.",
+    nextStep: "Next: signed recipient reviews terms and opens the Paycard Stream."
+  }
+};
+
 // DOM Elements
 const elNetworkStatus = document.getElementById("network-status");
+const elWalletStrip = document.getElementById("wallet-strip");
 const elBtnConnectWallet = document.getElementById("btn-connect-wallet");
 const elBtnSwitchWalletNetwork = document.getElementById("btn-switch-wallet-network");
 const elWalletStatus = document.getElementById("wallet-status");
@@ -74,12 +100,17 @@ const elRecoveryInput = document.getElementById("intent-recovery");
 const elLifespanInput = document.getElementById("intent-lifespan");
 const elPayerKeyInput = document.getElementById("intent-payer-key");
 const elModeInput = document.getElementById("intent-mode");
+const elRailModeGuide = document.getElementById("rail-mode-guide");
 const elNonceChannelInput = document.getElementById("intent-nonce-channel");
 const elNonceValueInput = document.getElementById("intent-nonce-value");
 const elClaimRecipientInput = document.getElementById("claim-recipient");
 const elMetadataRefInput = document.getElementById("intent-metadata-ref");
 const elWorkflowIdInput = document.getElementById("intent-workflow-id");
 const elMetadataHashInput = document.getElementById("intent-metadata-hash");
+const elArcActionStack = document.getElementById("arc-action-stack");
+const elBtnApproveArcSpend = document.getElementById("btn-approve-arc-spend");
+const elBtnSignArcEnvelope = document.getElementById("btn-sign-arc-envelope");
+const elBtnOpenArcPaycard = document.getElementById("btn-open-arc-paycard");
 const elBtnGenerateEnvelope = document.getElementById("btn-generate-envelope");
 const elBtnCreateRequestLink = document.getElementById("btn-create-request-link");
 
@@ -97,12 +128,18 @@ const elInboundLinkContainer = document.getElementById("inbound-link-container")
 const elInboundLinkStatus = document.getElementById("inbound-link-status");
 const elInboundLinkDetails = document.getElementById("inbound-link-details");
 
+const elRelayerTitle = document.getElementById("relayer-title");
+const elRelayerSubtitle = document.getElementById("relayer-subtitle");
+const elRelayerFlowCopy = document.getElementById("relayer-flow-copy");
+const elRelayerCapPanel = document.getElementById("relayer-cap-panel");
+const elRelayerCapCopy = document.getElementById("relayer-cap-copy");
 const elRelayerInputToken = document.getElementById("relayer-input-token");
 const elBtnSubmitRelayer = document.getElementById("btn-submit-relayer");
 const elRelayerStatusContainer = document.getElementById("relayer-status-container");
 const elRelayerStatusLabel = document.getElementById("relayer-status-label");
 const elReceiptTxLink = document.getElementById("receipt-tx-link");
 const elReceiptStatus = document.getElementById("receipt-status");
+const elReceiptSubmissionMode = document.getElementById("receipt-submission-mode");
 
 const elPaycardEmptyState = document.getElementById("paycard-empty-state");
 const elPaycardActiveState = document.getElementById("paycard-active-state");
@@ -130,9 +167,23 @@ const elMetricRecovered = document.getElementById("metric-recovered");
 const elMetricReceipts = document.getElementById("metric-receipts");
 const elMetricWallets = document.getElementById("metric-wallets");
 const elMetricRecentTx = document.getElementById("metric-recent-tx");
+const elTesterFlowStatus = document.getElementById("tester-flow-status");
 const elReceiptSummary = document.getElementById("receipt-summary");
 const elReceiptJsonOutput = document.getElementById("receipt-json-output");
 const elBtnCopyReceipt = document.getElementById("btn-copy-receipt");
+const elRecoveryArtifactInput = document.getElementById("recovery-artifact-input");
+const elBtnRecoverArtifact = document.getElementById("btn-recover-artifact");
+const elRecoveryWalletInput = document.getElementById("recovery-wallet-input");
+const elRecoveryMetadataInput = document.getElementById("recovery-metadata-input");
+const elRecoveryFromBlockInput = document.getElementById("recovery-from-block");
+const elRecoveryToBlockInput = document.getElementById("recovery-to-block");
+const elBtnRecoverWallet = document.getElementById("btn-recover-wallet");
+const elRecoveryStatus = document.getElementById("recovery-status");
+const elRecoveryResults = document.getElementById("recovery-results");
+const elHistoryPaycardInput = document.getElementById("history-paycard-input");
+const elBtnLoadHistory = document.getElementById("btn-load-history");
+const elHistoryStatus = document.getElementById("history-status");
+const elHistoryResults = document.getElementById("history-results");
 const elBtnCheckX402Bridge = document.getElementById("btn-check-x402-bridge");
 const elX402BridgeSummary = document.getElementById("x402-bridge-summary");
 const elX402BridgeOutput = document.getElementById("x402-bridge-output");
@@ -158,6 +209,7 @@ const elAccessHeadersOutput = document.getElementById("access-headers-output");
 const elAccessStatus = document.getElementById("access-status");
 
 let latestAccessCredentialToken = "";
+let latestArcEnvelopeToken = "";
 
 // Init
 window.addEventListener("DOMContentLoaded", async () => {
@@ -166,21 +218,51 @@ window.addEventListener("DOMContentLoaded", async () => {
   await refreshBalances();
   updateSessionMetrics();
   updateAgentDecisionTrace("Ready");
+  updateRailModeGuide();
   
   // Setup Event Listeners
   elBtnGenerateId.addEventListener("click", handlePaycardIdAction);
   elBtnConnectWallet.addEventListener("click", connectWallet);
   elBtnSwitchWalletNetwork.addEventListener("click", switchToConfiguredNetwork);
   elBtnCreateRequestLink.addEventListener("click", createRailsFlowRequestArtifact);
+  elBtnApproveArcSpend.addEventListener("click", approveArcSpend);
+  elBtnSignArcEnvelope.addEventListener("click", signArcEnvelope);
+  elBtnOpenArcPaycard.addEventListener("click", openSignedArcEnvelope);
   elBtnGenerateEnvelope.addEventListener("click", generateAndSignEnvelope);
   elBtnCopyEnvelope.addEventListener("click", copyEnvelopeToClipboard);
   elBtnCopyShareLink.addEventListener("click", copyShareLinkToClipboard);
   elBtnCopyReceipt.addEventListener("click", copyReceiptToClipboard);
+  elBtnRecoverArtifact.addEventListener("click", recoverPaycardFromArtifact);
+  elBtnRecoverWallet.addEventListener("click", recoverPaycardsFromWallet);
+  elBtnLoadHistory.addEventListener("click", loadStreamHistory);
   elBtnCheckX402Bridge.addEventListener("click", checkX402BridgeGate);
   elToggleJudgeScript.addEventListener("change", toggleJudgeScript);
-  elModeInput.addEventListener("change", updateClaimRecipientLock);
-  elRelayerInputToken.addEventListener("input", toggleRelayerButton);
+  elModeInput.addEventListener("change", () => {
+    updateClaimRecipientLock();
+    updateRailModeGuide();
+  });
+  elRelayerInputToken.addEventListener("input", () => {
+    latestArcEnvelopeToken = "";
+    elBtnOpenArcPaycard.disabled = true;
+    toggleRelayerButton();
+  });
   elBtnSubmitRelayer.addEventListener("click", broadcastRelayerTx);
+  [
+    elPaycardIdInput,
+    elAllocationInput,
+    elVelocityInput,
+    elRecipientInput,
+    elRecoveryInput,
+    elLifespanInput,
+    elModeInput,
+    elNonceChannelInput,
+    elNonceValueInput,
+    elMetadataRefInput,
+    elWorkflowIdInput
+  ].forEach((input) => {
+    input.addEventListener("input", resetSignedArcEnvelope);
+    input.addEventListener("change", resetSignedArcEnvelope);
+  });
   elBtnBlockchainTick.addEventListener("click", tickTime);
   elBtnProcessDrip.addEventListener("click", processDripSettle);
   elBtnAutoDrip.addEventListener("click", toggleAutoDrip);
@@ -199,6 +281,7 @@ function generateNewPaycardId() {
   window.crypto.getRandomValues(bytes);
   const hex = "0x" + Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
   elPaycardIdInput.value = hex;
+  resetSignedArcEnvelope();
 }
 
 function handlePaycardIdAction() {
@@ -220,8 +303,50 @@ function shortAddress(address) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
+function setWalletReadinessState(state) {
+  elWalletStrip.classList.remove("state-idle", "state-ready", "state-warning", "state-error");
+  elWalletStrip.classList.add(`state-${state}`);
+  elWalletStrip.dataset.state = state;
+}
+
+function setTransactionPanelState(state) {
+  elRelayerStatusContainer.classList.remove("state-pending", "state-success", "state-error");
+  if (state) elRelayerStatusContainer.classList.add(`state-${state}`);
+}
+
+function setActionMessageState(element, state) {
+  element.classList.remove("state-pending", "state-success", "state-error", "danger");
+  if (state) element.classList.add(`state-${state}`);
+}
+
+function inferMessageState(message, isError = false) {
+  if (isError) return "error";
+  return /requesting|submitting|searching|checking|open your wallet|running|pending/i.test(message)
+    ? "pending"
+    : "success";
+}
+
 function isArcWalletMode() {
   return config?.networkMode === "arc-testnet";
+}
+
+function resetSignedArcEnvelope() {
+  latestArcEnvelopeToken = "";
+  elRelayerInputToken.value = "";
+  elEnvelopePayloadText.textContent = "";
+  elEnvelopeOutputContainer.classList.add("hidden");
+  if (elBtnOpenArcPaycard) elBtnOpenArcPaycard.disabled = true;
+  toggleRelayerButton();
+}
+
+function isPublicRelayerMode() {
+  return isArcWalletMode() && config?.publicRelayer?.enabled === true;
+}
+
+function publicRelayerCapSummary() {
+  const caps = config?.publicRelayer?.caps;
+  if (!caps) return "No public relayer caps advertised.";
+  return `Max ${caps.maxAllocationUsdc} USDC, ${caps.maxLifespanSeconds}s lifespan, ${caps.maxVelocityUsdcPerSecond} USDC/sec. Public relayer opens only; settlement and close require payer or recipient wallet.`;
 }
 
 function getWalletNetworkParams() {
@@ -249,6 +374,7 @@ async function refreshConnectedWallet() {
     browserSigner = null;
     walletAddress = "";
     elBtnConnectWallet.textContent = "Connect Wallet";
+    resetSignedArcEnvelope();
     await refreshWalletState();
     return;
   }
@@ -260,6 +386,10 @@ async function refreshConnectedWallet() {
     if (!ethers.isAddress(elRecipientInput.value)) elRecipientInput.value = walletAddress;
     if (!ethers.isAddress(elRecoveryInput.value)) elRecoveryInput.value = walletAddress;
     if (!ethers.isAddress(elClaimRecipientInput.value)) elClaimRecipientInput.value = walletAddress;
+    resetSignedArcEnvelope();
+  }
+  if (!ethers.isAddress(elRecoveryWalletInput.value || "")) {
+    elRecoveryWalletInput.value = walletAddress;
   }
   elBtnConnectWallet.textContent = "Wallet Connected";
   await refreshWalletState();
@@ -355,6 +485,7 @@ async function ensureWalletReady() {
 
 async function refreshWalletState() {
   if (!browserSigner || !browserProvider || !config) {
+    setWalletReadinessState(isArcWalletMode() ? "warning" : "idle");
     elWalletStatus.textContent = "Disconnected";
     elWalletBalance.textContent = "—";
     elWalletAllowance.textContent = "—";
@@ -378,12 +509,14 @@ async function refreshWalletState() {
       ? `${shortAddress(walletAddress)} · wrong chain ${Number(network.chainId)}`
       : `${shortAddress(walletAddress)} · ready`;
     if (wrongNetwork) {
+      setWalletReadinessState("warning");
       elWalletBalance.textContent = "Wrong chain";
       elWalletAllowance.textContent = "Wrong chain";
       elWalletNetworkHint.textContent = `Wallet is on chain ${Number(network.chainId)}. Switch to Arc testnet ${config.chainId} to continue.`;
       elWalletNetworkHint.classList.remove("hidden");
       return;
     }
+    setWalletReadinessState("ready");
     elWalletNetworkHint.classList.add("hidden");
     elWalletNetworkHint.textContent = "";
     const [balance, allowance] = await Promise.all([
@@ -394,20 +527,26 @@ async function refreshWalletState() {
     elWalletAllowance.textContent = formatUSDC(allowance.toString());
   } catch (err) {
     console.error("Wallet state refresh failed:", err);
+    setWalletReadinessState("error");
     elWalletStatus.textContent = `${shortAddress(walletAddress)} · check failed`;
   }
 }
 
 function showWalletReceipt(tx, label) {
   elRelayerStatusContainer.classList.remove("hidden");
+  setTransactionPanelState("pending");
   elRelayerStatusLabel.textContent = label;
   elReceiptTxLink.textContent = tx.hash;
   elReceiptTxLink.href = config.explorerBaseUrl ? `${config.explorerBaseUrl}/tx/${tx.hash}` : "#";
   elReceiptStatus.textContent = "Pending confirmation";
+  elReceiptSubmissionMode.textContent = isArcWalletMode()
+    ? "Wallet-signed Arc transaction"
+    : "Wallet-signed local transaction";
 }
 
 function markWalletReceiptFailed() {
   if (!elRelayerStatusContainer.classList.contains("hidden")) {
+    setTransactionPanelState("error");
     elReceiptStatus.textContent = "Failed or rejected";
   }
 }
@@ -442,8 +581,9 @@ async function fetchConfig() {
 function applyDashboardMode() {
   const capabilities = config.capabilities || {};
   const isArc = config.networkMode === "arc-testnet";
+  const publicRelayer = isPublicRelayerMode();
   elNetworkStatus.textContent = isArc
-    ? `Arc Testnet Read-Only (Chain ID: ${config.chainId})`
+    ? `${publicRelayer ? "Arc Public Relayer Alpha" : "Arc Testnet Read-Only"} (Chain ID: ${config.chainId})`
     : `Local Hardhat Sandbox (Chain ID: ${config.chainId})`;
 
   elPaycardIdInput.readOnly = !isArc;
@@ -451,8 +591,12 @@ function applyDashboardMode() {
   elBtnGenerateId.textContent = isArc ? "New / Load" : "New ID";
 
   elBtnGenerateEnvelope.disabled = false;
+  elArcActionStack.classList.toggle("hidden", !isArc);
+  elBtnGenerateEnvelope.classList.toggle("hidden", isArc);
   elBtnGenerateEnvelope.textContent = isArc
-    ? "Connect Wallet, Approve, Sign and Submit"
+    ? publicRelayer
+      ? "Sign OpenRails Envelope"
+      : "Sign and Submit from Wallet"
     : "Generate & Sign Permission Envelope";
   elBtnCreateRequestLink.disabled = !capabilities.canUsePrivateKeySigning && !isArc;
   elBtnSwitchWalletNetwork.classList.toggle("hidden", !isArc);
@@ -468,15 +612,38 @@ function applyDashboardMode() {
   elBtnTestAccess.disabled = !config.localSandbox;
   elPayerKeyInput.disabled = !capabilities.canUsePrivateKeySigning;
   elRelayerInputToken.placeholder = isArc
-    ? "Arc testnet mode is read-only. Submit signed transactions from a wallet or approved relayer outside this dashboard."
-    : "Paste Base64 Permission Envelope here...";
+    ? publicRelayer
+      ? "Paste a signed envelope for Arc public relayer open..."
+      : "Arc testnet mode is read-only. Submit signed transactions from a wallet or approved relayer outside this dashboard."
+    : "Paste signed Base64 Permission Envelope bearer token here...";
+
+  elRelayerTitle.textContent = "Pay Stream";
+  elRelayerSubtitle.textContent = publicRelayer
+    ? "Arc public relayer alpha for capped self-serve stream opens"
+    : isArc
+      ? "Read-only API plus wallet-submitted Arc transactions"
+      : "Local sandbox transaction submission to the Vault";
+  elRelayerFlowCopy.innerHTML = publicRelayer
+    ? "<strong>Public Relayer Flow:</strong> Users approve USDC and sign the OpenRails envelope. The relayer opens capped testnet streams only. Settlement and close require the payer or recipient wallet."
+    : isArc
+      ? "<strong>Arc Wallet Flow:</strong> Backend reads state and recovery logs. Your connected wallet submits open, settle, and close transactions."
+      : "<strong>Relayer Transaction Flow:</strong> The dashboard submits the off-chain signed envelope to the Gateway. The local relayer submits the transaction to the Vault. Circle Paymaster support is future-facing in this sandbox.";
+  elRelayerCapPanel.classList.toggle("hidden", !publicRelayer);
+  elRelayerCapCopy.textContent = publicRelayerCapSummary();
+  elTesterFlowStatus.innerHTML = publicRelayer
+    ? `<strong>Mode:</strong> live read/write public tester flow. Open uses the capped public relayer; settlement and close use your wallet. ${publicRelayerCapSummary()}`
+    : isArc
+      ? "<strong>Mode:</strong> wallet-signed Arc tester flow. Backend is read-only; all writes use your wallet."
+      : "<strong>Mode:</strong> local sandbox tester flow.";
 
   if (isArc) {
     if (elAllocationInput.value === "1050") elAllocationInput.value = "0.01";
     if (elVelocityInput.value === "5") elVelocityInput.value = "0.0001";
     if (elLifespanInput.value === "120") elLifespanInput.value = "60";
     if (elMetadataRefInput.value === "demo-invoice-001") elMetadataRefInput.value = "manual-smoke-arc";
-    setLedgerActionStatus("Arc testnet live mode: local relayer, mint, time travel, and auto drip are disabled. Open, settle, and flush use your connected wallet.");
+    setLedgerActionStatus(publicRelayer
+      ? `Arc public relayer alpha: open is relayed with caps. ${publicRelayerCapSummary()}`
+      : "Arc testnet live mode: local relayer, mint, time travel, and auto drip are disabled. Open, settle, and flush use your connected wallet.");
   }
 }
 
@@ -534,7 +701,7 @@ function updateSessionMetrics() {
 
 function updateAgentDecisionTrace(phase, details = {}) {
   const mode = details.mode || elModeInput.value || "railsflow";
-  const rail = mode === "railsflow" ? "RailsFlow pull request" : "RailsCard value link";
+  const rail = RAIL_COPY[mode]?.title || (mode === "railsflow" ? "RailsFlow pull request" : "RailsCard value link");
   elAgentTraceSummary.textContent = `${phase}: agent selected ${rail} with bounded Vault enforcement.`;
   const items = [
     `Rail: ${rail}`,
@@ -551,18 +718,27 @@ function updateAgentDecisionTrace(phase, details = {}) {
   }));
 }
 
+function updateRailModeGuide() {
+  const mode = elModeInput.value;
+  elRailModeGuide.textContent = RAIL_COPY[mode]?.guide || RAIL_COPY.railsflow.guide;
+  elRailModeGuide.classList.toggle("danger", mode === "railscard_bearer");
+}
+
 function renderReceipt(receipt) {
   latestReceipt = receipt;
   sessionMetrics.receipts += 1;
   recordTxHash(receipt.txHash);
   updateSessionMetrics();
   const labels = {
-    payment_opened: "Payment/Open Receipt",
+    payment_opened: "Vault Open Receipt",
     settlement_processed: "Settlement Receipt",
-    residual_recovered: "Residual Recovery Receipt"
+    residual_recovered: receipt.recoveryStatus === "no_residual_remaining"
+      ? "No-Residual Close Receipt"
+      : "Residual Recovery Receipt"
   };
   const workflowLabel = receipt.metadata?.workflowId ? ` Workflow: ${receipt.metadata.workflowId}.` : "";
-  elReceiptSummary.textContent = `${labels[receipt.type]} generated for ${receipt.paycardId.slice(0, 10)}...${receipt.paycardId.slice(-8)}.${workflowLabel}`;
+  const note = receipt.note ? ` ${receipt.note}` : "";
+  elReceiptSummary.textContent = `${labels[receipt.type]} generated for ${receipt.paycardId.slice(0, 10)}...${receipt.paycardId.slice(-8)}.${workflowLabel}${note}`;
   elReceiptJsonOutput.textContent = serializeReceipt(receipt);
   elBtnCopyReceipt.disabled = false;
 }
@@ -576,6 +752,254 @@ function copyReceiptToClipboard() {
       elBtnCopyReceipt.textContent = originalText;
     }, 2000);
   });
+}
+
+function setRecoveryStatus(message, isError = false) {
+  elRecoveryStatus.textContent = message;
+  setActionMessageState(elRecoveryStatus, inferMessageState(message, isError));
+}
+
+function buildRecoveredArtifactResult(paycardId, source, details = {}) {
+  return {
+    paycardId,
+    source,
+    metadataHash: details.metadataHash || "",
+    payer: details.payer || "",
+    recipient: details.recipient || "",
+    operationalStatus: details.operationalStatus || "",
+    blockNumber: details.blockNumber,
+  };
+}
+
+function extractPaycardFromLocalArtifact(input) {
+  const trimmed = input.trim();
+  if (!trimmed) throw new Error("Paste a receipt, OpenRails link, or envelope first.");
+
+  try {
+    const receipt = parseReceipt(trimmed);
+    return buildRecoveredArtifactResult(receipt.paycardId, "Receipt", {
+      metadataHash: receipt.metadataHash,
+      payer: receipt.payer,
+      recipient: receipt.recipient,
+      blockNumber: receipt.blockNumber,
+    });
+  } catch {
+    // Continue through supported artifact formats.
+  }
+
+  try {
+    const artifact = parseOpenRailsLink(trimmed);
+    const envelopeToken = artifact.payload?.envelopeToken;
+    if (!envelopeToken) {
+      throw new Error("Unsigned RailsFlow links do not contain a Paycard ID yet.");
+    }
+    const decoded = deserializeEnvelope(envelopeToken);
+    return buildRecoveredArtifactResult(decoded.intent.paycardId, "OpenRails link", {
+      metadataHash: decoded.intent.metadataHash,
+      payer: decoded.payerAddress,
+      recipient: decoded.intent.recipient,
+    });
+  } catch (err) {
+    if (String(err?.message || "").includes("Unsigned RailsFlow links")) throw err;
+  }
+
+  const decoded = deserializeEnvelope(trimmed);
+  return buildRecoveredArtifactResult(decoded.intent.paycardId, "Envelope", {
+    metadataHash: decoded.intent.metadataHash,
+    payer: decoded.payerAddress,
+    recipient: decoded.intent.recipient,
+  });
+}
+
+function renderRecoveryResults(results) {
+  elRecoveryResults.replaceChildren();
+  if (!results.length) {
+    const empty = document.createElement("p");
+    empty.className = "input-helper";
+    empty.textContent = "No Paycard IDs recovered.";
+    elRecoveryResults.appendChild(empty);
+    return;
+  }
+
+  for (const result of results) {
+    const row = document.createElement("div");
+    row.className = "recovery-result";
+    const details = document.createElement("div");
+    details.className = "recovery-result-details";
+    const source = result.source || "Onchain event";
+    const payer = result.payer || result.registry?.payer || result.provisioned?.payer || "";
+    const recipient = result.recipient || result.registry?.recipient || result.provisioned?.recipient || "";
+    const metadataHash = result.metadataHash || result.registry?.metadataHash || result.provisioned?.metadataHash || "";
+    const status = result.operationalStatus || result.registry?.operationalStatus || "";
+    const blockNumber = result.blockNumber ?? result.provisioned?.blockNumber;
+    const title = document.createElement("strong");
+    title.textContent = `${source}: ${result.paycardId.slice(0, 10)}...${result.paycardId.slice(-8)}`;
+    const statusLine = document.createElement("span");
+    statusLine.textContent = `${status ? `${status} · ` : ""}${blockNumber !== undefined ? `block ${blockNumber}` : "local artifact"}`;
+    const partyLine = document.createElement("span");
+    partyLine.textContent = `Payer ${shortAddress(payer)} · Recipient ${shortAddress(recipient)}`;
+    const metadataLine = document.createElement("span");
+    metadataLine.textContent = `Metadata ${metadataHash ? `${metadataHash.slice(0, 12)}...${metadataHash.slice(-8)}` : "—"}`;
+    details.append(title, statusLine, partyLine, metadataLine);
+    const loadButton = document.createElement("button");
+    loadButton.type = "button";
+    loadButton.className = "btn-secondary";
+    loadButton.textContent = "Load";
+    loadButton.addEventListener("click", () => {
+      elPaycardIdInput.value = result.paycardId;
+      if (metadataHash) elMetadataHashInput.value = metadataHash;
+      resetSignedArcEnvelope();
+      startPollingPaycard(result.paycardId);
+      setRecoveryStatus(`Loaded Paycard ${result.paycardId.slice(0, 10)}...${result.paycardId.slice(-8)}.`);
+    });
+    row.append(details, loadButton);
+    elRecoveryResults.appendChild(row);
+  }
+}
+
+function recoverPaycardFromArtifact() {
+  try {
+    const result = extractPaycardFromLocalArtifact(elRecoveryArtifactInput.value);
+    renderRecoveryResults([result]);
+    setRecoveryStatus(`Recovered Paycard ID from ${result.source}.`);
+  } catch (err) {
+    renderRecoveryResults([]);
+    setRecoveryStatus(`Artifact recovery failed: ${err.message}`, true);
+  }
+}
+
+function setHistoryStatus(message, isError = false) {
+  elHistoryStatus.textContent = message;
+  setActionMessageState(elHistoryStatus, inferMessageState(message, isError));
+}
+
+function renderStreamHistory(paycardId, state, events) {
+  elHistoryResults.replaceChildren();
+
+  if (state) {
+    const summary = document.createElement("div");
+    summary.className = "recovery-result";
+    const details = document.createElement("div");
+    details.className = "recovery-result-details";
+    const title = document.createElement("strong");
+    title.textContent = `Indexed state · ${state.status}`;
+    const balanceLine = document.createElement("span");
+    balanceLine.textContent = `Available ${formatUSDCPrecise(state.availableBalance)} of ${formatUSDCPrecise(state.totalAllocation)}`;
+    const partyLine = document.createElement("span");
+    partyLine.textContent = `Payer ${shortAddress(state.payer)} · Recipient ${shortAddress(state.recipient)}`;
+    const wfLine = document.createElement("span");
+    wfLine.textContent = `Workflow ${state.workflowId || "—"}`;
+    details.append(title, balanceLine, partyLine, wfLine);
+    summary.appendChild(details);
+    elHistoryResults.appendChild(summary);
+  }
+
+  if (!events.length) {
+    const empty = document.createElement("p");
+    empty.className = "input-helper";
+    empty.textContent = "No indexed events. Make sure the stream gateway is running.";
+    elHistoryResults.appendChild(empty);
+    return;
+  }
+
+  for (const event of events) {
+    const row = document.createElement("div");
+    row.className = "recovery-result";
+    const details = document.createElement("div");
+    details.className = "recovery-result-details";
+    const title = document.createElement("strong");
+    title.textContent = event.eventName;
+    const blockLine = document.createElement("span");
+    const ts = event.blockTimestamp ? ` · ${new Date(event.blockTimestamp * 1000).toLocaleString()}` : "";
+    blockLine.textContent = `block ${event.blockNumber}${ts}`;
+    const txLine = document.createElement("span");
+    txLine.textContent = `tx ${event.transactionHash ? `${event.transactionHash.slice(0, 10)}...${event.transactionHash.slice(-8)}` : "—"}`;
+    details.append(title, blockLine, txLine);
+    row.appendChild(details);
+    elHistoryResults.appendChild(row);
+  }
+}
+
+async function loadStreamHistory() {
+  const paycardId =
+    elHistoryPaycardInput.value.trim() ||
+    activePaycard?.paycardId ||
+    elPaycardIdInput.value.trim();
+  if (!ethers.isHexString(paycardId, 32)) {
+    setHistoryStatus("Enter a valid bytes32 Paycard ID (or open a stream first).", true);
+    return;
+  }
+  elHistoryPaycardInput.value = paycardId;
+  setHistoryStatus("Loading indexed history...");
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/streams/${paycardId}/history`);
+    if (res.status === 404) {
+      renderStreamHistory(paycardId, null, []);
+      setHistoryStatus("No indexed history yet. Start the stream gateway and re-open the stream.", true);
+      return;
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    renderStreamHistory(paycardId, data.state, data.events || []);
+    const count = (data.events || []).length;
+    setHistoryStatus(`Loaded ${count} indexed event${count === 1 ? "" : "s"}. ${data.disclaimer || ""}`.trim());
+  } catch (err) {
+    renderStreamHistory(paycardId, null, []);
+    setHistoryStatus(`History load failed: ${err.message}`, true);
+  }
+}
+
+function buildRecoverySearchParams(role, wallet) {
+  const params = new URLSearchParams({
+    [role]: wallet,
+    limit: "20",
+  });
+  const metadataHash = elRecoveryMetadataInput.value.trim();
+  const fromBlock = elRecoveryFromBlockInput.value.trim();
+  const toBlock = elRecoveryToBlockInput.value.trim();
+  if (metadataHash) params.set("metadataHash", metadataHash);
+  if (fromBlock) params.set("fromBlock", fromBlock);
+  if (toBlock) params.set("toBlock", toBlock);
+  return params;
+}
+
+async function recoverPaycardsFromWallet() {
+  const wallet = elRecoveryWalletInput.value.trim();
+  if (!ethers.isAddress(wallet)) {
+    setRecoveryStatus("Enter a valid payer or recipient wallet address.", true);
+    return;
+  }
+
+  elBtnRecoverWallet.disabled = true;
+  elBtnRecoverWallet.textContent = "Searching...";
+  setRecoveryStatus("Searching PaycardProvisioned logs by payer and recipient...");
+  try {
+    const roles = ["payer", "recipient"];
+    const combined = new Map();
+    for (const role of roles) {
+      const res = await fetch(`${BACKEND_URL}/api/paycards/recover?${buildRecoverySearchParams(role, wallet).toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Paycard recovery request failed");
+      for (const result of data.results || []) {
+        combined.set(result.paycardId.toLowerCase(), {
+          ...result,
+          source: role === "payer" ? "Onchain payer match" : "Onchain recipient match",
+        });
+      }
+    }
+    const results = [...combined.values()].sort((a, b) => (b.provisioned?.blockNumber || 0) - (a.provisioned?.blockNumber || 0));
+    renderRecoveryResults(results);
+    setRecoveryStatus(results.length ? `Recovered ${results.length} Paycard ID(s).` : "No Paycard IDs matched this wallet.");
+  } catch (err) {
+    renderRecoveryResults([]);
+    setRecoveryStatus(`Onchain recovery failed: ${err.message}`, true);
+  } finally {
+    elBtnRecoverWallet.disabled = false;
+    elBtnRecoverWallet.textContent = "Search Onchain";
+  }
 }
 
 function renderX402BridgeArtifact(result) {
@@ -687,10 +1111,37 @@ function renderQr(text) {
   });
 }
 
+function buildArtifactReview({ artifact, payload = {}, intent = null, mode = "" }) {
+  const selectedMode = mode || payload.mode || intent?.mode || elModeInput.value;
+  const amount = payload.amount || intent?.totalAllocationPool || "";
+  const velocity = payload.flowVelocityPerSecond || intent?.flowVelocityPerSecond || "";
+  const lifespan = payload.lifespanSeconds ?? intent?.lifespanSeconds ?? "";
+  const workflowId = payload.workflowId || elWorkflowIdInput.value.trim() || "none";
+  const claimRule = selectedMode === "railscard_bearer"
+    ? "first holder wins until claimed"
+    : selectedMode === "railscard_recipient_bound"
+      ? "recipient-bound wallet only"
+      : "payer signs before funds move";
+  return [
+    RAIL_COPY[selectedMode]?.nextStep || "Review terms before sharing or submitting.",
+    artifact ? `kind=${artifact.kind}` : `mode=${selectedMode}`,
+    artifact ? `chainId=${artifact.chainId}` : `chainId=${config?.chainId ?? "unknown"}`,
+    artifact ? `vault=${artifact.vault}` : `vault=${config?.clearinghouseAddress ?? "unknown"}`,
+    artifact ? `token=${artifact.token}` : `token=${config?.usdcAddress ?? "unknown"}`,
+    `metadataHash=${artifact?.metadataHash || elMetadataHashInput.value || "pending"}`,
+    amount ? `amount=${amount}` : "",
+    velocity ? `velocity=${velocity}` : "",
+    lifespan !== "" ? `lifespanSeconds=${lifespan}` : "",
+    `workflowId=${workflowId}`,
+    `claimRule=${claimRule}`
+  ].filter(Boolean).join("\n");
+}
+
 function showShareArtifact({ type, warning, link, dangerous = false, interceptorPreview = "" }) {
   elShareArtifactType.textContent = type;
   elShareArtifactWarning.textContent = warning;
   elShareArtifactWarning.classList.toggle("danger", dangerous);
+  elShareArtifactContainer.classList.toggle("danger-review", dangerous);
   elShareLinkOutput.value = link;
   elInterceptorPreview.textContent = interceptorPreview;
   elShareArtifactContainer.classList.remove("hidden");
@@ -765,9 +1216,10 @@ function hydrateInboundArtifact(artifact) {
     elLifespanInput.value = String(payload.lifespanSeconds);
     elMetadataRefInput.value = payload.metadataRef || "";
     elWorkflowIdInput.value = payload.workflowId || "";
+    resetSignedArcEnvelope();
     showInboundLinkReview(
       "Unsigned RailsFlow request loaded",
-      "Review the merchant terms, paste a local demo payer key, then generate and sign a Permission Envelope. Nothing is broadcast automatically.",
+      "Unsigned RailsFlow request loaded. Review the merchant terms, then sign with wallet or local sandbox key. Nothing is broadcast automatically.",
       false,
       artifact
     );
@@ -800,7 +1252,7 @@ function hydrateInboundArtifact(artifact) {
     elMetadataRefInput.value = decoded.metadata?.metadataRef || "";
     elWorkflowIdInput.value = decoded.metadata?.workflowId || "";
     if (payload.mode === "railscard_bearer") {
-      elClaimRecipientInput.value = elClaimRecipientInput.value || config.presets.merchantAddress;
+      elClaimRecipientInput.value = elClaimRecipientInput.value || "";
     } else if (payload.mode === "railscard_recipient_bound") {
       elClaimRecipientInput.value = decoded.intent.recipient;
       elClaimRecipientInput.disabled = true;
@@ -809,7 +1261,7 @@ function hydrateInboundArtifact(artifact) {
     showInboundLinkReview(
       artifact.kind === "railscard" ? "Signed RailsCard link loaded" : "Signed RailsFlow link loaded",
       payload.mode === "railscard_bearer"
-        ? "Bearer RailsCard loaded. Anyone with this link can claim first. Review claim recipient before broadcasting."
+        ? "Bearer RailsCard loaded. Treat like cash until claimed: anyone with this unclaimed URL or QR can redeem first. Enter the wallet that should claim it before broadcasting."
         : "Signed envelope loaded. Review terms before explicit broadcast.",
       payload.mode === "railscard_bearer",
       artifact
@@ -821,8 +1273,9 @@ function hydrateInboundArtifact(artifact) {
 function showInboundLinkReview(title, detail, dangerous = false, artifact = null) {
   elInboundLinkStatus.textContent = title;
   elInboundLinkStatus.classList.toggle("danger", dangerous);
+  elInboundLinkContainer.classList.toggle("danger-review", dangerous);
   elInboundLinkDetails.textContent = artifact
-    ? `${detail}\nkind=${artifact.kind}\nchainId=${artifact.chainId}\nvault=${artifact.vault}\nmetadataHash=${artifact.metadataHash}`
+    ? `${detail}\n${buildArtifactReview({ artifact, payload: artifact.payload })}`
     : detail;
   elInboundLinkContainer.classList.remove("hidden");
 }
@@ -831,6 +1284,14 @@ function updateClaimRecipientLock() {
   if (elModeInput.value !== "railscard_recipient_bound") {
     elClaimRecipientInput.disabled = false;
   }
+}
+
+function readBearerClaimRecipient() {
+  const claimRecipient = elClaimRecipientInput.value.trim();
+  if (!ethers.isAddress(claimRecipient) || claimRecipient === ethers.ZeroAddress) {
+    throw new Error("Bearer RailsCard needs a non-zero claim recipient before opening. Treat the link like cash until claimed.");
+  }
+  return claimRecipient;
 }
 
 // Refresh treasury wallets
@@ -906,10 +1367,20 @@ function createRailsFlowRequestArtifact() {
     payload
   });
   showShareArtifact({
-    type: "Unsigned RailsFlow Request Link",
-    warning: "Unsigned request only. It cannot move funds until the payer reviews and signs a Permission Envelope.",
+    type: RAIL_COPY.railsflow.shareType,
+    warning: RAIL_COPY.railsflow.shareWarning,
     link,
-    interceptorPreview: "No service credential yet. Payer must sign and open a Paycard Stream first."
+    interceptorPreview: buildArtifactReview({
+      artifact: {
+        kind: "railsflow",
+        chainId: config.chainId,
+        vault: config.clearinghouseAddress,
+        token: config.usdcAddress,
+        metadataHash,
+        payload
+      },
+      payload
+    })
   });
 }
 
@@ -946,6 +1417,172 @@ function buildCurrentMetadataAndIntent(payerAddress) {
   return { metadata, intent, mode };
 }
 
+async function prepareArcEnvelopeContext() {
+  resetSignedArcEnvelope();
+  const signer = await ensureWalletReady();
+  const payer = await signer.getAddress();
+  const currentNonce = await readNonce(
+    browserProvider,
+    config.clearinghouseAddress,
+    payer,
+    Number(elNonceChannelInput.value),
+  );
+  elNonceValueInput.value = String(currentNonce);
+  const { metadata, intent, mode } = buildCurrentMetadataAndIntent(payer);
+  elMetadataHashInput.value = intent.metadataHash;
+  const claimRecipient = mode === "railscard_bearer" ? readBearerClaimRecipient() : undefined;
+  return { signer, payer, metadata, intent, mode, claimRecipient };
+}
+
+async function approveArcSpend() {
+  try {
+    const { signer, payer, intent, mode } = await prepareArcEnvelopeContext();
+    updateAgentDecisionTrace("Checking approval", {
+      mode,
+      allocation: intent.totalAllocationPool,
+      nonceChannel: intent.nonceChannel,
+      metadataHash: intent.metadataHash
+    });
+    const balance = await readTokenBalance(browserProvider, config.usdcAddress, payer);
+    if (balance < BigInt(intent.totalAllocationPool)) {
+      throw new Error(`Insufficient USDC balance. Need ${formatUSDC(intent.totalAllocationPool)}.`);
+    }
+    const allowance = await readTokenAllowance(
+      browserProvider,
+      config.usdcAddress,
+      payer,
+      config.clearinghouseAddress,
+    );
+    if (allowance >= BigInt(intent.totalAllocationPool)) {
+      setLedgerActionStatus("Approval already covers this Paycard allocation.");
+      await refreshWalletState();
+      return;
+    }
+    setLedgerActionStatus("Requesting bounded USDC approval in wallet...");
+    const approveTx = await approveOpenRailsSpend(
+      signer,
+      config.usdcAddress,
+      config.clearinghouseAddress,
+      BigInt(intent.totalAllocationPool),
+    );
+    showWalletReceipt(approveTx, "Wallet approval submitted to Arc testnet.");
+    const receipt = await approveTx.wait();
+    elReceiptStatus.textContent = `Mined (Block #${receipt.blockNumber})`;
+    setTransactionPanelState("success");
+    setLedgerActionStatus("Bounded USDC approval confirmed. Next: sign the OpenRails envelope.");
+    await refreshWalletState();
+  } catch (err) {
+    markWalletReceiptFailed();
+    console.error("Arc approval failed:", err);
+    setLedgerActionStatus(`Arc approval failed: ${err.message}`, true);
+  }
+}
+
+async function signArcEnvelope() {
+  try {
+    const { signer, payer, metadata, intent, mode } = await prepareArcEnvelopeContext();
+    const allowance = await readTokenAllowance(
+      browserProvider,
+      config.usdcAddress,
+      payer,
+      config.clearinghouseAddress,
+    );
+    if (allowance < BigInt(intent.totalAllocationPool)) {
+      throw new Error("Approve bounded USDC before signing this envelope.");
+    }
+    updateAgentDecisionTrace("Requesting signature", {
+      mode,
+      allocation: intent.totalAllocationPool,
+      nonceChannel: intent.nonceChannel,
+      metadataHash: intent.metadataHash
+    });
+    setLedgerActionStatus("Requesting EIP-712 OpenRails signature in wallet...");
+    latestArcEnvelopeToken = await signPermissionEnvelopeWithSigner(signer, config, intent, {
+      mode,
+      metadata
+    });
+    elEnvelopePayloadText.textContent = latestArcEnvelopeToken;
+    elEnvelopeOutputContainer.classList.remove("hidden");
+    elRelayerInputToken.value = latestArcEnvelopeToken;
+    toggleRelayerButton();
+    elBtnOpenArcPaycard.disabled = false;
+    setLedgerActionStatus(isPublicRelayerMode()
+      ? "Envelope signed. Next: open through the public relayer."
+      : "Envelope signed. Next: submit from your wallet.");
+  } catch (err) {
+    console.error("Arc envelope signing failed:", err);
+    setLedgerActionStatus(`Arc envelope signing failed: ${err.message}`, true);
+  }
+}
+
+async function openSignedArcEnvelope() {
+  const token = (elRelayerInputToken.value || latestArcEnvelopeToken || "").trim();
+  if (!token) {
+    setLedgerActionStatus("Sign an OpenRails envelope before opening a Paycard Stream.", true);
+    return;
+  }
+  if (isPublicRelayerMode()) {
+    elRelayerInputToken.value = token;
+    await broadcastRelayerTx();
+    return;
+  }
+
+  try {
+    const signer = await ensureWalletReady();
+    const payer = await signer.getAddress();
+    const decoded = deserializeEnvelope(token);
+    const mode = decoded.mode || elModeInput.value;
+    const claimRecipient = mode === "railscard_bearer" ? readBearerClaimRecipient() : undefined;
+    setLedgerActionStatus("Submitting OpenRails transaction from connected wallet...");
+    const tx = await submitOpenPaycardWithSigner(
+      signer,
+      config.clearinghouseAddress,
+      token,
+      mode,
+      claimRecipient,
+    );
+    showWalletReceipt(tx, "Wallet transaction submitted to Arc testnet.");
+    const receipt = await tx.wait();
+    elReceiptStatus.textContent = `Mined (Block #${receipt.blockNumber})`;
+    setTransactionPanelState("success");
+    const recipient = mode === "railscard_bearer" ? claimRecipient : decoded.intent.recipient;
+    renderReceipt(createPaymentReceipt({
+      chainId: config.chainId,
+      hub: config.clearinghouseAddress,
+      token: config.usdcAddress,
+      paycardId: decoded.intent.paycardId,
+      metadataHash: decoded.intent.metadataHash,
+      payer,
+      recipient,
+      txHash: tx.hash,
+      blockNumber: receipt.blockNumber,
+      totalAllocationPool: decoded.intent.totalAllocationPool,
+      flowVelocityPerSecond: decoded.intent.flowVelocityPerSecond,
+      lifespanSeconds: decoded.intent.lifespanSeconds,
+      residualDeltaRecipient: decoded.intent.residualDeltaRecipient,
+      nonceChannel: decoded.intent.nonceChannel,
+      nonceValue: decoded.intent.nonceValue,
+      metadata: decoded.metadata
+    }));
+    sessionMetrics.streamsOpened += 1;
+    sessionMetrics.escrowed += BigInt(decoded.intent.totalAllocationPool);
+    updateSessionMetrics();
+    updateAgentDecisionTrace("Opened", {
+      mode,
+      allocation: decoded.intent.totalAllocationPool,
+      nonceChannel: decoded.intent.nonceChannel,
+      metadataHash: decoded.intent.metadataHash
+    });
+    setLedgerActionStatus("OpenRails Paycard Stream opened on Arc testnet.");
+    await refreshWalletState();
+    startPollingPaycard(decoded.intent.paycardId);
+  } catch (err) {
+    markWalletReceiptFailed();
+    console.error("Arc wallet open failed:", err);
+    setLedgerActionStatus(`Arc wallet open failed: ${err.message}`, true);
+  }
+}
+
 async function submitArcWalletOpen() {
   try {
     const signer = await ensureWalletReady();
@@ -959,6 +1596,7 @@ async function submitArcWalletOpen() {
     elNonceValueInput.value = String(currentNonce);
     const { metadata, intent, mode } = buildCurrentMetadataAndIntent(payer);
     elMetadataHashInput.value = intent.metadataHash;
+    const claimRecipient = mode === "railscard_bearer" ? readBearerClaimRecipient() : undefined;
     updateAgentDecisionTrace("Preparing", {
       mode,
       allocation: intent.totalAllocationPool,
@@ -1001,6 +1639,14 @@ async function submitArcWalletOpen() {
     });
     elEnvelopePayloadText.textContent = envelopeToken;
     elEnvelopeOutputContainer.classList.remove("hidden");
+    elRelayerInputToken.value = envelopeToken;
+    toggleRelayerButton();
+
+    if (isPublicRelayerMode()) {
+      setLedgerActionStatus("Submitting signed envelope through Arc public relayer...");
+      await broadcastRelayerTx();
+      return;
+    }
 
     setLedgerActionStatus("Submitting OpenRails transaction from connected wallet...");
     const tx = await submitOpenPaycardWithSigner(
@@ -1008,11 +1654,12 @@ async function submitArcWalletOpen() {
       config.clearinghouseAddress,
       envelopeToken,
       mode,
-      mode === "railscard_bearer" ? elClaimRecipientInput.value.trim() : undefined,
+      claimRecipient,
     );
     showWalletReceipt(tx, "Wallet transaction submitted to Arc testnet.");
     const receipt = await tx.wait();
     elReceiptStatus.textContent = `Mined (Block #${receipt.blockNumber})`;
+    setTransactionPanelState("success");
     const paymentReceipt = createPaymentReceipt({
       chainId: config.chainId,
       hub: config.clearinghouseAddress,
@@ -1020,7 +1667,7 @@ async function submitArcWalletOpen() {
       paycardId: intent.paycardId,
       metadataHash: intent.metadataHash,
       payer,
-      recipient: mode === "railscard_bearer" ? elClaimRecipientInput.value.trim() : intent.recipient,
+      recipient: mode === "railscard_bearer" ? claimRecipient : intent.recipient,
       txHash: tx.hash,
       blockNumber: receipt.blockNumber,
       totalAllocationPool: intent.totalAllocationPool,
@@ -1053,7 +1700,7 @@ async function submitArcWalletOpen() {
 
 async function generateAndSignEnvelope() {
   if (isArcWalletMode()) {
-    await submitArcWalletOpen();
+    await signArcEnvelope();
     return;
   }
   if (!config) {
@@ -1181,13 +1828,30 @@ async function generateAndSignEnvelope() {
           claimHint: mode === "railscard_bearer" ? "first-holder-wins" : "recipient-bound"
         });
     showShareArtifact({
-      type: mode === "railsflow" ? "Signed RailsFlow Envelope Link" : "Signed RailsCard Value Link",
+      type: mode === "railsflow" ? "Signed RailsFlow Envelope Link" : RAIL_COPY[mode].shareType,
       warning: mode === "railscard_bearer"
-        ? "Bearer RailsCard value link. Anyone with this link or QR can claim first."
-        : "Signed envelope. Relayer submission can escrow payer funds under the displayed terms.",
+        ? RAIL_COPY.railscard_bearer.shareWarning
+        : mode === "railscard_recipient_bound"
+          ? RAIL_COPY.railscard_recipient_bound.shareWarning
+          : "Signed RailsFlow envelope. Relayer submission can escrow payer funds under the displayed terms.",
       link,
       dangerous: mode === "railscard_bearer",
-      interceptorPreview: buildOpenRailsAccessHeaderPreview(base64Token, intent, mode)
+      interceptorPreview: [
+        buildArtifactReview({
+          artifact: {
+            kind: mode === "railsflow" ? "railsflow" : "railscard",
+            chainId: config.chainId,
+            vault: config.clearinghouseAddress,
+            token: config.usdcAddress,
+            metadataHash,
+            payload: { mode, workflowId: metadata.workflowId }
+          },
+          payload: { mode, workflowId: metadata.workflowId },
+          intent
+        }),
+        "",
+        buildOpenRailsAccessHeaderPreview(base64Token, intent, mode)
+      ].join("\n")
     });
 
     // Scroll to relayer section
@@ -1239,19 +1903,34 @@ async function broadcastRelayerTx() {
     alert("Paste a signed executable envelope token, not a share link. Open the link first, then submit the envelope.");
     return;
   }
+  if (elModeInput.value === "railscard_bearer") {
+    try {
+      readBearerClaimRecipient();
+    } catch (err) {
+      setLedgerActionStatus(err.message, true);
+      return;
+    }
+  }
 
   elBtnSubmitRelayer.disabled = true;
   elRelayerStatusContainer.classList.remove("hidden");
-  elRelayerStatusLabel.textContent = "Submitting relayer transaction to the Vault...";
+  setTransactionPanelState("pending");
+  elRelayerStatusLabel.textContent = isPublicRelayerMode()
+    ? "Submitting Arc public relayer transaction to the Vault..."
+    : "Submitting relayer transaction to the Vault...";
   elReceiptTxLink.textContent = "Processing...";
   elReceiptTxLink.removeAttribute("href");
   elReceiptStatus.textContent = "Pending";
+  elReceiptSubmissionMode.textContent = isPublicRelayerMode()
+    ? "Arc public relayer alpha"
+    : "Local relayer sandbox";
   
   // Scroll to make visible
   elRelayerStatusContainer.scrollIntoView({ behavior: "smooth" });
 
   try {
     const decodedEnvelope = deserializeEnvelope(token);
+    const envelopeMode = decodedEnvelope.mode || elModeInput.value;
     const res = await fetch(`${BACKEND_URL}/api/paycard/open`, {
       method: "POST",
       headers: {
@@ -1261,7 +1940,7 @@ async function broadcastRelayerTx() {
       },
       body: JSON.stringify({
         envelopeToken: token,
-        mode: elModeInput.value,
+        mode: envelopeMode,
         claimRecipient: elClaimRecipientInput.value.trim() || undefined
       })
     });
@@ -1272,7 +1951,9 @@ async function broadcastRelayerTx() {
     // Success
     elRelayerStatusLabel.textContent = `Transaction Confirmed! ${data.mode || "Paycard"} Channel Open.`;
     elReceiptTxLink.textContent = data.txHash;
+    elReceiptTxLink.href = config.explorerBaseUrl ? `${config.explorerBaseUrl}/tx/${data.txHash}` : "#";
     elReceiptStatus.textContent = `Mined (Block #${data.blockNumber})`;
+    setTransactionPanelState("success");
     const opened = await syncPaycard(data.paycardId);
     if (opened) {
       sessionMetrics.streamsOpened += 1;
@@ -1311,6 +1992,7 @@ async function broadcastRelayerTx() {
     console.error("Broadcast failed:", err);
     elRelayerStatusLabel.textContent = "Error broadcasting: " + err.message;
     elReceiptStatus.textContent = "Failed";
+    setTransactionPanelState("error");
     elBtnSubmitRelayer.disabled = false;
   }
 }
@@ -1534,7 +2216,7 @@ async function testProtectedAccess() {
 // EVM Controls via Relayer API
 function setLedgerActionStatus(message, isError = false) {
   elLedgerActionStatus.textContent = message;
-  elLedgerActionStatus.classList.toggle("danger", isError);
+  setActionMessageState(elLedgerActionStatus, inferMessageState(message, isError));
 }
 
 function toggleAutoDrip() {
@@ -1612,7 +2294,7 @@ async function processDripSettle(options = {}) {
   if (!activePaycard) return;
   const card = activePaycard;
   const paycardId = activePaycard.paycardId;
-  if (isArcWalletMode()) {
+  if (isArcWalletMode() && config?.capabilities?.canGatewaySettle !== true) {
     try {
       const signer = await ensureWalletReady();
       updateAgentDecisionTrace("Settling", {
@@ -1625,6 +2307,7 @@ async function processDripSettle(options = {}) {
       showWalletReceipt(tx, "Wallet settlement submitted to Arc testnet.");
       const receipt = await tx.wait();
       elReceiptStatus.textContent = `Mined (Block #${receipt.blockNumber})`;
+      setTransactionPanelState("success");
       setLedgerActionStatus("Wallet drip settlement confirmed.");
       const refreshed = await syncPaycard(paycardId);
       const settledAmount = getVaultEventAmount(receipt, "SettlementFlushed", "amountWithdrawn");
@@ -1659,6 +2342,9 @@ async function processDripSettle(options = {}) {
   }
   try {
     elBtnProcessDrip.disabled = true;
+    setLedgerActionStatus(isPublicRelayerMode()
+      ? "Submitting settlement through Arc public relayer..."
+      : "Submitting gateway drip settlement...");
     const res = await fetch(`${BACKEND_URL}/api/paycard/drip`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1713,9 +2399,13 @@ async function flushResidualDelta() {
       showWalletReceipt(tx, "Wallet residual recovery submitted to Arc testnet.");
       const receipt = await tx.wait();
       elReceiptStatus.textContent = `Mined (Block #${receipt.blockNumber})`;
-      setLedgerActionStatus("Residual recovered and Paycard Stream closed.");
+      setTransactionPanelState("success");
       const settledAmount = getVaultEventAmount(receipt, "SettlementFlushed", "amountWithdrawn");
       const recoveredAmount = getVaultEventAmount(receipt, "ResidualDeltaReclaimed", "varianceSwept");
+      const noResidual = recoveredAmount === 0n;
+      setLedgerActionStatus(noResidual
+        ? "Stream closed after final settlement. No STN-Delta residual remained to recover."
+        : "Residual recovered and Paycard Stream closed.");
       if (settledAmount > 0n) {
         sessionMetrics.settled += settledAmount;
         renderReceipt(createSettlementReceipt({
@@ -1743,9 +2433,11 @@ async function flushResidualDelta() {
         recipient: card.recipient,
         txHash: tx.hash,
         blockNumber: receipt.blockNumber,
-        recoveredAmount: recoveredAmount.toString()
+        recoveredAmount: recoveredAmount.toString(),
+        recoveryStatus: noResidual ? "no_residual_remaining" : "residual_recovered",
+        note: noResidual ? "No STN-Delta residual remained to recover." : undefined
       }));
-      updateAgentDecisionTrace("Residual recovered", {
+      updateAgentDecisionTrace(noResidual ? "No residual remaining" : "Residual recovered", {
         allocation: card.totalAllocationPool,
         nonceChannel: elNonceChannelInput.value,
         metadataHash: card.metadataHash
@@ -1784,9 +2476,12 @@ async function flushResidualDelta() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Residual recovery failed");
     console.log("Residual Delta flushed (STN-Delta):", data);
-    stopAutoDrip("Residual recovered and Paycard Stream closed.");
     const recoveredAmount = BigInt(data.recoveredAmount || "0");
     const settledAmount = BigInt(data.settledAmount || "0");
+    const noResidual = recoveredAmount === 0n;
+    stopAutoDrip(noResidual
+      ? "Stream closed after final settlement. No STN-Delta residual remained to recover."
+      : "Residual recovered and Paycard Stream closed.");
     if (settledAmount > 0n) {
       sessionMetrics.settled += settledAmount;
       renderReceipt(createSettlementReceipt({
@@ -1814,7 +2509,9 @@ async function flushResidualDelta() {
       recipient: card.recipient,
       txHash: data.txHash,
       blockNumber: data.blockNumber,
-      recoveredAmount: recoveredAmount.toString()
+      recoveredAmount: recoveredAmount.toString(),
+      recoveryStatus: noResidual ? "no_residual_remaining" : "residual_recovered",
+      note: noResidual ? "No STN-Delta residual remained to recover." : undefined
     }));
     
     await syncPaycard(paycardId);
