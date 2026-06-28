@@ -41,6 +41,7 @@ Output logs will detail the mock server startup, the HTTP header capture for bot
 > **Mock vs. paid.** This harness proves the 402 protocol *mechanics* only — balances are
 > in-memory and no Circle facilitator or onchain settlement is involved. The real, paid path is
 > the server endpoint `GET /api/x402/openrails-artifact` (`server/index.ts`), gated by Circle's
-> facilitator middleware and Arc testnet mode. For the current proven/unproven status of both,
-> and the operator steps to complete the paid settlement smoke, see
+> facilitator middleware and Arc testnet mode, exercised by the real buyer
+> `x402-paid-buyer.ts` (`npm run smoke:x402:paid`). For the runbook, the proven/unproven
+> status, and the captured paid-run record, see
 > [`x402-smoke-results.md`](./x402-smoke-results.md).

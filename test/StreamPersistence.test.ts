@@ -152,6 +152,54 @@ describe("PersistentStreamReader", () => {
     expect(wf.events.length).to.equal(3);
   });
 
+  it("filters streams by metadataHash (case-insensitive) and composes with other filters", () => {
+    dir = tmpDir();
+    const store = new PersistentFileStateStore(dir);
+    const hashA = "0x" + "aa".repeat(32);
+    const hashB = "0x" + "bb".repeat(32);
+    const a = makeState({ paycardId: "0x" + "0a".repeat(32), metadataHash: hashA, workflowId: "wf-1" });
+    const b = makeState({ paycardId: "0x" + "0b".repeat(32), metadataHash: hashB });
+    const c = makeState({ paycardId: "0x" + "0c".repeat(32), metadataHash: hashA, status: "Terminated" });
+    store.set(a.paycardId, a);
+    store.set(b.paycardId, b);
+    store.set(c.paycardId, c);
+
+    const reader = new PersistentStreamReader(dir);
+    // case-insensitive match on metadataHash
+    expect(reader.listStreams({ metadataHash: hashA.toUpperCase() }).map((s) => s.paycardId).sort())
+      .to.deep.equal([a.paycardId, c.paycardId].sort());
+    // composes with status and workflowId
+    expect(reader.listStreams({ metadataHash: hashA, status: "Active" }).map((s) => s.paycardId))
+      .to.deep.equal([a.paycardId]);
+    expect(reader.listStreams({ metadataHash: hashA, workflowId: "wf-1" }).map((s) => s.paycardId))
+      .to.deep.equal([a.paycardId]);
+    expect(reader.listStreams({ metadataHash: hashB }).map((s) => s.paycardId)).to.deep.equal([b.paycardId]);
+  });
+
+  it("looks up events and associated streams by transaction hash", () => {
+    dir = tmpDir();
+    const store = new PersistentFileStateStore(dir);
+    const a = makeState({ paycardId: "0x" + "0a".repeat(32) });
+    const b = makeState({ paycardId: "0x" + "0b".repeat(32) });
+    store.set(a.paycardId, a);
+    store.set(b.paycardId, b);
+    const txShared = "0x" + "f1".repeat(32);
+    const txOther = "0x" + "f2".repeat(32);
+    // two events share one tx (different logIndex / paycard); a third is a separate tx
+    store.recordEvent(makeEvent({ paycardId: b.paycardId, transactionHash: txShared, blockNumber: 9, logIndex: 2 }));
+    store.recordEvent(makeEvent({ paycardId: a.paycardId, transactionHash: txShared, blockNumber: 9, logIndex: 0 }));
+    store.recordEvent(makeEvent({ paycardId: a.paycardId, transactionHash: txOther, blockNumber: 11, logIndex: 0 }));
+
+    const reader = new PersistentStreamReader(dir);
+    const result = reader.getByTransaction(txShared.toUpperCase()); // case-insensitive
+    expect(result.events.map((e) => e.logIndex)).to.deep.equal([0, 2]); // ordered by logIndex
+    expect(result.streams.map((s) => s.paycardId).sort()).to.deep.equal([a.paycardId, b.paycardId].sort());
+
+    const none = reader.getByTransaction("0x" + "00".repeat(32));
+    expect(none.events).to.deep.equal([]);
+    expect(none.streams).to.deep.equal([]);
+  });
+
   it("returns empty results for an unknown directory", () => {
     dir = tmpDir();
     const reader = new PersistentStreamReader(path.join(dir, "does-not-exist"));

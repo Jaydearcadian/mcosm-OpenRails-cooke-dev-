@@ -548,11 +548,17 @@ app.get("/api/paycard/:id", async (req, res) => {
 app.get("/api/streams", (req, res) => {
   try {
     const filter: StreamQueryFilter = {};
-    const { payer, recipient, workflow, workflowId, status } = req.query;
+    const { payer, recipient, workflow, workflowId, metadataHash, status } = req.query;
     if (typeof payer === "string" && payer) filter.payer = payer;
     if (typeof recipient === "string" && recipient) filter.recipient = recipient;
     const wf = (workflow ?? workflowId);
     if (typeof wf === "string" && wf) filter.workflowId = wf;
+    if (typeof metadataHash === "string" && metadataHash) {
+      if (!ethers.isHexString(metadataHash, 32)) {
+        return res.status(400).json({ error: "metadataHash must be a bytes32 hex string" });
+      }
+      filter.metadataHash = metadataHash;
+    }
     if (typeof status === "string" && status) {
       const allowed: PaycardStatus[] = ["Active", "PendingSettlement", "Terminated"];
       if (!allowed.includes(status as PaycardStatus)) {
@@ -591,6 +597,22 @@ app.get("/api/workflows/:id", (req, res) => {
       return res.status(400).json({ error: "Missing workflowId" });
     }
     const result = streamReader.getWorkflow(workflowId);
+    res.json({ authoritative: false, disclaimer: STREAM_HISTORY_DISCLAIMER, ...result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/transactions/:hash", (req, res) => {
+  try {
+    const hash = req.params.hash;
+    if (!ethers.isHexString(hash, 32)) {
+      return res.status(400).json({ error: "Invalid transaction hash; expected 32-byte hex" });
+    }
+    const result = streamReader.getByTransaction(hash);
+    if (result.events.length === 0) {
+      return res.status(404).json({ error: "No indexed events for this transaction", transactionHash: hash });
+    }
     res.json({ authoritative: false, disclaimer: STREAM_HISTORY_DISCLAIMER, ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1100,7 +1122,10 @@ app.get(
         metadataHash,
         vaultEscrowClaimed: false,
         openRailsSettlementStage: "metadata_only",
-        nextAction: "Open or bind a Paycard Stream with a separate OpenRails wallet signature.",
+        nextAction:
+          "Redeem this artifact into a real Vault escrow: open a Paycard Stream with a separate " +
+          "OpenRails wallet signature, binding metadataRef=circle-x402:<settlementId> " +
+          "(non-custodial; buyer funds their own escrow). See `npm run smoke:x402:stream`.",
       },
     });
   },

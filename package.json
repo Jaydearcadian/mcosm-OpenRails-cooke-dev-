@@ -19,6 +19,8 @@
     "stream-gateway": "ts-node stream-gateway/index.ts",
     "launch:check": "ts-node scripts/launch-check.ts",
     "smoke:sdk:arc": "ts-node scripts/sdk-arc-smoke.ts",
+    "smoke:x402:paid": "ts-node experiments/x402-smoke/x402-paid-buyer.ts",
+    "smoke:x402:stream": "ts-node experiments/x402-smoke/x402-to-stream.ts",
     "deploy:openrails": "hardhat run scripts/deploy-openrails.ts --network arcTestnet",
     "smoke:testnet": "hardhat run scripts/smoke-openrails-testnet.ts --network arcTestnet"
   },

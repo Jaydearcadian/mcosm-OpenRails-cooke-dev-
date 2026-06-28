@@ -420,6 +420,7 @@ export interface StreamQueryFilter {
   payer?: string;
   recipient?: string;
   workflowId?: string;
+  metadataHash?: string;
   status?: PaycardStatus;
 }
 
@@ -471,6 +472,7 @@ export class PersistentStreamReader {
         eq(s.payer, filter.payer) &&
         eq(s.recipient, filter.recipient) &&
         eq(s.workflowId, filter.workflowId) &&
+        eq(s.metadataHash, filter.metadataHash) &&
         (!filter.status || s.status === filter.status),
     );
   }
@@ -501,5 +503,19 @@ export class PersistentStreamReader {
       )
       .sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex);
     return { workflowId, streams, events };
+  }
+
+  getByTransaction(transactionHash: string): {
+    transactionHash: string;
+    events: StreamEventRecord[];
+    streams: PaycardStreamState[];
+  } {
+    const tx = transactionHash.toLowerCase();
+    const events = this.readEvents()
+      .filter((e) => e.transactionHash.toLowerCase() === tx)
+      .sort((a, b) => a.logIndex - b.logIndex);
+    const ids = new Set(events.map((e) => e.paycardId.toLowerCase()));
+    const streams = this.readStates().filter((s) => ids.has(s.paycardId.toLowerCase()));
+    return { transactionHash, events, streams };
   }
 }
