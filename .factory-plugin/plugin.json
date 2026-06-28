@@ -1,0 +1,5 @@
+{
+  "name": "openrails",
+  "version": "1.0.0",
+  "description": "OpenRails CLI skills for stream request, payment, status, recovery, settlement, and close workflows."
+}
