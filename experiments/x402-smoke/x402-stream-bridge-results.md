@@ -54,15 +54,38 @@ OpenRails Vault escrow stream**, opened **non-custodially** from the buyer's own
   "metadataRef": "circle-x402:2f03bb36-e873-4913-81d4-aff303771518" }
 ```
 
-## Lifecycle from here
+## Full lifecycle — PROVEN end to end (2026-06-29)
 
-The stream is `Active`: it drips to the recipient over its lifespan, can be settled
-(`processDripSettle`), and residual returns to the buyer (`flushResidualDelta`). Once the
-stream gateway ingests the `PaycardProvisioned` event (live or via backfill from block
-49187374), the stream is also queryable through the Phase 5 indexing:
-`GET /api/streams?metadataHash=0x10757ec3…` and
-`GET /api/transactions/0x3693d7a9…`. (This run proved the rail via the **authoritative** Vault
-read; the indexer surfaces the same row once the gateway is running.)
+The bridged stream was driven through its **entire** lifecycle on Arc testnet, not just opened:
+
+1. **Drip settlement** — `processDripSettle` (permissionless), tx
+   `0x96e1b1ab6459325ad130e69105cd7e8162efc0b3ec00c8feb9ebdf52926f42ad` (block 49254633).
+   Past lifespan, so earned capped at `velocity×lifespan = 10×3600 = 36000` (0.036 USDC):
+   Vault `availableBalance` 50000 → **14000**; the 0.036 USDC streamed to recipient `0x933a…`.
+2. **Residual recovery** — `flushResidualDelta` (payer/recipient only; called by the payer/buyer),
+   tx `0x4bc3bdeca43c7b9d165b7c31951ce380092b4c50a653e11135f5c1d45b9633b8` (block 49254695).
+   `availableBalance` 14000 → **0**; residual 0.014 USDC returned to `residualDeltaRecipient`
+   (the buyer `0x1A76…`); stream **Terminated**.
+
+So of the 0.05 USDC the buyer escrowed: **0.036 streamed to the provider, 0.014 recovered by
+the buyer** — a complete bounded, streaming, recoverable payment opened by an x402 request.
+
+**Indexed event timeline** (`GET /api/streams/:paycardId/history`, `authoritative: false`,
+status `Terminated`):
+
+| # | event | block | tx |
+| :- | :--- | :--- | :--- |
+| 1 | `PaycardProvisioned` | 49187374 | `0x3693d7a9…` |
+| 2 | `SettlementFlushed` | 49254633 | `0x96e1b1ab…` |
+| 3 | `ResidualDeltaReclaimed` | 49254695 | `0x4bc3bdec…` |
+
+`GET /api/transactions/0x4bc3bdec…` → `ResidualDeltaReclaimed` + the resolved stream. The
+gateway backfilled the settle/close events from a recent start block (the public Arc RPC caps
+`eth_getLogs` at 10,000 blocks, so backfill windows must stay under that).
+
+_Note: recipient/buyer wallet-level deltas are approximate (both addresses have other activity —
+the recipient is also the x402 demo seller); the Vault `availableBalance` accounting above is
+the authoritative measure._
 
 ## Reproduce
 
