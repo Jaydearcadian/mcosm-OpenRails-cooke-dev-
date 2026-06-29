@@ -84,6 +84,8 @@ const manualSignoffs = [
 ];
 
 const dashboardMode = process.env.OPENRAILS_DASHBOARD_MODE || "local";
+const publicRelayerEnabled =
+  dashboardMode === "arc-testnet" && process.env.OPENRAILS_ENABLE_ARC_PUBLIC_RELAYER === "true";
 
 function add(status: Status, area: string, item: string, detail: string) {
   results.push({ status, area, item, detail });
@@ -140,13 +142,21 @@ function checkEnv() {
   for (const envName of requiredEnv) {
     if (
       dashboardMode === "arc-testnet" &&
-      ["DEPLOYER_PRIVATE_KEY", "OPENRAILS_PAYER_PRIVATE_KEY", "OPENRAILS_RELAYER_PRIVATE_KEY"].includes(envName)
+      ["DEPLOYER_PRIVATE_KEY", "OPENRAILS_PAYER_PRIVATE_KEY"].includes(envName)
     ) {
-      add("warn", "env", envName, "not required for read-only Arc testnet dashboard mode");
+      add("warn", "env", envName, "not required for Arc testnet dashboard mode");
+      continue;
+    }
+    if (dashboardMode === "arc-testnet" && envName === "OPENRAILS_RELAYER_PRIVATE_KEY" && !publicRelayerEnabled) {
+      add("warn", "env", envName, "not required unless OPENRAILS_ENABLE_ARC_PUBLIC_RELAYER=true");
       continue;
     }
     const value = process.env[envName];
     if (!value) {
+      if (envName === "OPENRAILS_RELAYER_PRIVATE_KEY" && publicRelayerEnabled) {
+        add("fail", "env", envName, "required when OPENRAILS_ENABLE_ARC_PUBLIC_RELAYER=true");
+        continue;
+      }
       add("warn", "env", envName, "not set in environment or .env");
       continue;
     }
@@ -177,6 +187,25 @@ function checkEnv() {
     }
 
     add("pass", "env", envName, "configured with a non-placeholder value");
+  }
+
+  if (publicRelayerEnabled) {
+    add("pass", "env", "OPENRAILS_ENABLE_ARC_PUBLIC_RELAYER", "public Arc relayer alpha is enabled");
+    for (const [envName, fallback] of [
+      ["OPENRAILS_PUBLIC_RELAYER_MAX_ALLOCATION_USDC", "1"],
+      ["OPENRAILS_PUBLIC_RELAYER_MAX_LIFESPAN_SECONDS", "3600"],
+      ["OPENRAILS_PUBLIC_RELAYER_MAX_VELOCITY_USDC_PER_SECOND", "0.1"],
+    ] as const) {
+      const value = process.env[envName] || fallback;
+      const validNumber = envName === "OPENRAILS_PUBLIC_RELAYER_MAX_LIFESPAN_SECONDS"
+        ? /^\d+$/u.test(value)
+        : /^\d+(\.\d+)?$/u.test(value);
+      if (!validNumber || Number(value) <= 0) {
+        add("fail", "env", envName, "must be a positive numeric public relayer cap");
+      } else {
+        add("pass", "env", envName, `public relayer cap is ${value}`);
+      }
+    }
   }
 }
 

@@ -40,6 +40,8 @@ export interface OpenRailsSettlementReceipt extends OpenRailsReceiptBase {
 export interface OpenRailsResidualReceipt extends OpenRailsReceiptBase {
   type: 'residual_recovered';
   recoveredAmount: string;
+  recoveryStatus: 'residual_recovered' | 'no_residual_remaining';
+  note?: string;
   finalStatus: 'Terminated';
 }
 
@@ -96,6 +98,8 @@ export interface CreateResidualRecoveryReceiptParams {
   blockNumber?: number;
   issuedAt?: number;
   recoveredAmount: string;
+  recoveryStatus?: 'residual_recovered' | 'no_residual_remaining';
+  note?: string;
   metadata?: CanonicalMetadataV1;
 }
 
@@ -140,11 +144,18 @@ export function createResidualRecoveryReceipt(
   params: CreateResidualRecoveryReceiptParams,
 ): OpenRailsResidualReceipt {
   assertReceiptMetadata(params.metadataHash, params.metadata);
+  const recoveryStatus = params.recoveryStatus ??
+    (BigInt(params.recoveredAmount) === 0n ? 'no_residual_remaining' : 'residual_recovered');
   return {
     ...params,
     version: 'openrails-receipt-v1',
     type: 'residual_recovered',
     issuedAt: params.issuedAt ?? Math.floor(Date.now() / 1000),
+    recoveryStatus,
+    note: params.note ??
+      (recoveryStatus === 'no_residual_remaining'
+        ? 'No STN-Delta residual remained to recover.'
+        : undefined),
     finalStatus: 'Terminated',
   };
 }

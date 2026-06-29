@@ -37,6 +37,7 @@ import {
 } from "../sdk/src/access";
 import {
   approveOpenRailsSpend,
+  recoverPaycardsFromLogs,
   readNonce,
   readTokenAllowance,
   readTokenBalance,
@@ -235,6 +236,60 @@ describe("ArcOpenRailsHubV1", () => {
     expect(card.totalAllocationPool).to.equal(totalAllocation);
     expect(card.availableBalance).to.equal(totalAllocation);
     expect(card.operationalStatus).to.equal(0); // Active
+  });
+
+  it("SDK should recover paycards from PaycardProvisioned logs with current registry state", async () => {
+    const { client, wallet } = await createFundedClient();
+    const paycardId = ethers.keccak256(ethers.toUtf8Bytes("recover-paycard-log"));
+    const metadataHash = ethers.keccak256(ethers.toUtf8Bytes("recover-paycard-metadata"));
+    const totalAllocation = ethers.parseUnits("125", 6);
+    const intent = buildIntent({
+      paycardId,
+      metadataHash,
+      totalAllocationPool: totalAllocation.toString(),
+      flowVelocityPerSecond: ethers.parseUnits("1", 6).toString(),
+      lifespanSeconds: 300,
+      nonceChannel: 7,
+    });
+
+    const tx = await openPaycard(client, intent);
+    const receipt = await tx.wait();
+
+    const recovered = await recoverPaycardsFromLogs(
+      ethers.provider,
+      await clearinghouse.getAddress(),
+      {
+        payer: wallet.address,
+        recipient: recipient.address,
+        metadataHash,
+        fromBlock: receipt!.blockNumber,
+        toBlock: receipt!.blockNumber,
+        limit: 5,
+        chunkSize: 1,
+      },
+    );
+
+    expect(recovered).to.have.length(1);
+    expect(recovered[0].paycardId).to.equal(paycardId);
+    expect(recovered[0].provisioned.metadataHash).to.equal(metadataHash);
+    expect(recovered[0].provisioned.poolAllocation).to.equal(totalAllocation.toString());
+    expect(recovered[0].provisioned.blockNumber).to.equal(receipt!.blockNumber);
+    expect(recovered[0].registry.payer).to.equal(wallet.address);
+    expect(recovered[0].registry.recipient).to.equal(recipient.address);
+    expect(recovered[0].registry.metadataHash).to.equal(metadataHash);
+    expect(recovered[0].registry.operationalStatus).to.equal("Active");
+
+    const wrongMetadata = await recoverPaycardsFromLogs(
+      ethers.provider,
+      await clearinghouse.getAddress(),
+      {
+        payer: wallet.address,
+        metadataHash: ethers.keccak256(ethers.toUtf8Bytes("wrong-metadata")),
+        fromBlock: receipt!.blockNumber,
+        toBlock: receipt!.blockNumber,
+      },
+    );
+    expect(wrongMetadata).to.deep.equal([]);
   });
 
   it("should fail to open channel if paycardId is already in use (replay defense)", async () => {
@@ -1417,6 +1472,23 @@ describe("ArcOpenRailsHubV1", () => {
       metadata,
     });
     expect(residualReceipt.finalStatus).to.equal("Terminated");
+    expect(residualReceipt.recoveryStatus).to.equal("residual_recovered");
+
+    const noResidualReceipt = createResidualRecoveryReceipt({
+      chainId,
+      hub: hubAddress,
+      token: tokenAddress,
+      paycardId: paymentReceipt.paycardId,
+      metadataHash,
+      payer: payer.address,
+      recipient: recipient.address,
+      txHash: ethers.keccak256(ethers.toUtf8Bytes("flush-no-residual-tx")),
+      recoveredAmount: "0",
+      metadata,
+    });
+    expect(noResidualReceipt.recoveryStatus).to.equal("no_residual_remaining");
+    expect(noResidualReceipt.note).to.include("No STN-Delta residual remained");
+    expect(parseReceipt(serializeReceipt(noResidualReceipt))).to.deep.equal(noResidualReceipt);
 
     expect(() => createPaymentReceipt({
       ...paymentReceipt,
@@ -1619,6 +1691,11 @@ describe("ArcOpenRailsHubV1", () => {
     expect(appSource).to.include("X-OpenRails-Paycard-Id");
     expect(appSource).to.include("X-OpenRails-Metadata-Hash");
     expect(appSource).to.include("Bearer RailsCard value link");
+    expect(appSource).to.include("Treat it like cash until claimed");
+    expect(appSource).to.include("readBearerClaimRecipient");
+    expect(appSource).to.include("No STN-Delta residual remained to recover");
+    expect(appSource).to.include("No-Residual Close Receipt");
+    expect(appSource).to.include("buildArtifactReview");
     expect(appSource).to.include('import QRCode from "qrcode"');
     expect(appSource).to.include("parseOpenRailsLink");
     expect(appSource).to.include("window.addEventListener(\"hashchange\"");
@@ -1629,6 +1706,21 @@ describe("ArcOpenRailsHubV1", () => {
     expect(appSource).to.include("runAutoDripStep");
     expect(appSource).to.include("config.capabilities");
     expect(appSource).to.include("Arc Testnet Read-Only");
+    expect(appSource).to.include("Arc Public Relayer Alpha");
+    expect(appSource).to.include("isPublicRelayerMode");
+    expect(appSource).to.include("publicRelayerCapSummary");
+    expect(appSource).to.include("approveArcSpend");
+    expect(appSource).to.include("signArcEnvelope");
+    expect(appSource).to.include("openSignedArcEnvelope");
+    expect(appSource).to.include("resetSignedArcEnvelope");
+    expect(appSource).to.include('elRelayerInputToken.value = ""');
+    expect(appSource).to.include("elEnvelopeOutputContainer.classList.add(\"hidden\")");
+    expect(appSource).to.include("latestArcEnvelopeToken = \"\"");
+    expect(appSource).to.include("const token = (elRelayerInputToken.value || latestArcEnvelopeToken || \"\").trim()");
+    expect(appSource).to.include("const envelopeMode = decodedEnvelope.mode || elModeInput.value");
+    expect(appSource).to.include("mode: envelopeMode");
+    expect(appSource).to.include("Public relayer opens only");
+    expect(appSource).to.include("settlement and close use your wallet");
     expect(appSource).to.include("canUsePrivateKeySigning");
     expect(appSource).to.include("canRelayOpen");
     expect(appSource).to.include("connectWallet");
@@ -1638,10 +1730,16 @@ describe("ArcOpenRailsHubV1", () => {
     expect(appSource).to.include("submitSettleWithSigner");
     expect(appSource).to.include("submitFlushWithSigner");
     expect(appSource).to.include("switchOrAddOpenRailsNetwork");
+    expect(appSource).to.include("Wallet-signed Arc transaction");
+    expect(appSource).to.include("Wallet-signed local transaction");
     expect(appSource).to.include("https://rpc.testnet.arc.network");
     expect(appSource).to.include("createPaymentReceipt");
     expect(appSource).to.include("createSettlementReceipt");
     expect(appSource).to.include("createResidualRecoveryReceipt");
+    expect(appSource).to.include("recoverPaycardsFromWallet");
+    expect(appSource).to.include("recoverPaycardFromArtifact");
+    expect(appSource).to.include("/api/paycards/recover");
+    expect(appSource).to.include("parseReceipt");
     expect(appSource).to.include("updateAgentDecisionTrace");
     expect(appSource).to.include("sessionMetrics");
     expect(appSource).to.not.include("Authorization: OpenRails <short-lived access credential or envelope>");
@@ -1659,7 +1757,19 @@ describe("ArcOpenRailsHubV1", () => {
     expect(htmlSource).to.include("Workflow Scope ID");
     expect(htmlSource).to.include("Agent Decision Trace");
     expect(htmlSource).to.include("Live Session Metrics");
+    expect(htmlSource).to.include("External Testers");
+    expect(htmlSource).to.include("Try V1 Now");
+    expect(htmlSource).to.include("btn-approve-arc-spend");
+    expect(htmlSource).to.include("btn-sign-arc-envelope");
+    expect(htmlSource).to.include("btn-open-arc-paycard");
+    expect(htmlSource).to.include("relayer-cap-panel");
+    expect(htmlSource).to.include("tester-flow-status");
+    expect(htmlSource).to.include("npm run smoke:sdk:arc -- --wallet 0x...");
     expect(htmlSource).to.include("OpenRails Receipt");
+    expect(htmlSource).to.include("Recover Paycard ID");
+    expect(htmlSource).to.include("recovery-artifact-input");
+    expect(htmlSource).to.include("btn-recover-wallet");
+    expect(htmlSource).to.include("Search Onchain");
     expect(htmlSource).to.include("Circle x402 Bridge");
     expect(htmlSource).to.include("btn-check-x402-bridge");
     expect(htmlSource).to.include("x402-bridge-output");
@@ -1668,7 +1778,12 @@ describe("ArcOpenRailsHubV1", () => {
     expect(htmlSource).to.include("protected endpoint");
     expect(htmlSource).to.include('type="module" src="app.js"');
     expect(htmlSource).to.include("Create RailsFlow Request Link");
+    expect(htmlSource).to.include("rail-mode-guide");
+    expect(htmlSource).to.include("Merchant / Recipient Address");
+    expect(htmlSource).to.include("Review before sharing");
     expect(htmlSource).to.include("Local Relayer Gateway");
+    expect(htmlSource).to.include("relayer-flow-copy");
+    expect(htmlSource).to.include("receipt-submission-mode");
     expect(htmlSource).to.include("Bearer is first-holder-wins");
     expect(htmlSource).to.not.include("Gasless Relayer Gateway");
     expect(htmlSource).to.not.include("Circle Sponsored Relays");
@@ -1698,6 +1813,13 @@ describe("ArcOpenRailsHubV1", () => {
     expect(serverSource).to.include("OPENRAILS_DASHBOARD_MODE");
     expect(serverSource).to.include("arc-testnet");
     expect(serverSource).to.include("ARC_READ_ONLY_CAPABILITIES");
+    expect(serverSource).to.include("ARC_PUBLIC_RELAYER_ENABLED");
+    expect(serverSource).to.include("OPENRAILS_ENABLE_ARC_PUBLIC_RELAYER");
+    expect(serverSource).to.include("ARC_PUBLIC_RELAYER_CAPABILITIES");
+    expect(serverSource).to.include("settleRequiresWallet: true");
+    expect(serverSource).to.include("publicRelayerCaps");
+    expect(serverSource).to.include("validatePublicRelayerCaps");
+    expect(serverSource).to.include("Public relayer cap exceeded");
     expect(serverSource).to.include("canRelayOpen: false");
     expect(serverSource).to.include("forbiddenCapability");
     expect(serverSource).to.include("Flush requires caller authorization signature");
@@ -1706,6 +1828,84 @@ describe("ArcOpenRailsHubV1", () => {
     expect(serverSource).to.include("Local sandbox bootstrap refuses non-loopback RPC URLs");
     expect(serverSource).to.not.include("agentPrivateKey:");
     expect(serverSource).to.not.include("merchantPrivateKey:");
+  });
+
+  it("Arc public relayer alpha should be env-gated, capped, and close-wallet-only", () => {
+    const serverSource = fs.readFileSync(
+      path.join(__dirname, "../server/index.ts"),
+      "utf8"
+    );
+    const launchCheckSource = fs.readFileSync(
+      path.join(__dirname, "../scripts/launch-check.ts"),
+      "utf8"
+    );
+
+    expect(serverSource).to.include('process.env.OPENRAILS_ENABLE_ARC_PUBLIC_RELAYER === "true"');
+    expect(serverSource).to.include("OPENRAILS_RELAYER_PRIVATE_KEY must be a 32-byte hex key");
+    expect(serverSource).to.include("new ethers.Wallet(privateKey, provider)");
+    expect(serverSource).to.include("maxAllocationUsdc");
+    expect(serverSource).to.include("maxLifespanSeconds");
+    expect(serverSource).to.include("maxVelocityUsdcPerSecond");
+    expect(serverSource).to.include("parsePublicRelayerUnits");
+    expect(serverSource).to.include('canDemoFlush: false');
+    const publicCapabilitiesStart = serverSource.indexOf("const ARC_PUBLIC_RELAYER_CAPABILITIES");
+    const publicCapabilitiesEnd = serverSource.indexOf("function currentCapabilities", publicCapabilitiesStart);
+    const publicCapabilitiesSource = serverSource.slice(publicCapabilitiesStart, publicCapabilitiesEnd);
+    expect(publicCapabilitiesSource).to.include("canRelayOpen: true");
+    expect(publicCapabilitiesSource).to.not.include("canGatewaySettle: true");
+    expect(serverSource).to.include("Demo flush is available only in the local Hardhat sandbox");
+    expect(serverSource).to.include("closeRequiresWallet: true");
+    expect(serverSource).to.not.include("OPENRAILS_RELAYER_PRIVATE_KEY,");
+    expect(launchCheckSource).to.include("publicRelayerEnabled");
+    expect(launchCheckSource).to.include("required when OPENRAILS_ENABLE_ARC_PUBLIC_RELAYER=true");
+    expect(launchCheckSource).to.include("OPENRAILS_PUBLIC_RELAYER_MAX_ALLOCATION_USDC");
+    expect(launchCheckSource).to.include("OPENRAILS_PUBLIC_RELAYER_MAX_LIFESPAN_SECONDS");
+    expect(launchCheckSource).to.include("OPENRAILS_PUBLIC_RELAYER_MAX_VELOCITY_USDC_PER_SECOND");
+  });
+
+  it("server and SDK should expose bounded Paycard ID recovery", () => {
+    const serverSource = fs.readFileSync(
+      path.join(__dirname, "../server/index.ts"),
+      "utf8"
+    );
+    const walletSource = fs.readFileSync(
+      path.join(__dirname, "../sdk/src/wallet.ts"),
+      "utf8"
+    );
+
+    expect(walletSource).to.include("event PaycardProvisioned");
+    expect(walletSource).to.include("recoverPaycardsFromLogs");
+    expect(walletSource).to.include("provider.getLogs");
+    expect(walletSource).to.include("readPaycard(provider, hubAddress, paycardId)");
+    expect(serverSource).to.include('app.get("/api/paycards/recover", apiLimiter');
+    expect(serverSource).to.include("PAYCARD_RECOVERY_MAX_BLOCK_SPAN");
+    expect(serverSource).to.include("PAYCARD_RECOVERY_CHUNK_SIZE");
+    expect(serverSource).to.include("payer or recipient is required");
+    expect(serverSource).to.include("recoverPaycardsFromLogs(provider, clearinghouseAddress");
+  });
+
+  it("tester SDK smoke should be read-only and expose recovery commands", () => {
+    const packageJson = JSON.parse(
+      fs.readFileSync(path.join(__dirname, "../package.json"), "utf8")
+    );
+    const scriptSource = fs.readFileSync(
+      path.join(__dirname, "../scripts/sdk-arc-smoke.ts"),
+      "utf8"
+    );
+
+    expect(packageJson.scripts["smoke:sdk:arc"]).to.equal("ts-node scripts/sdk-arc-smoke.ts");
+    expect(scriptSource).to.include("Read-only OpenRails Arc SDK smoke");
+    expect(scriptSource).to.include('provider.send("eth_chainId"');
+    expect(scriptSource).to.include("Wrong network: expected chain");
+    expect(scriptSource).to.include("recoverPaycardsFromLogs");
+    expect(scriptSource).to.include("readPaycard");
+    expect(scriptSource).to.include("readTokenBalance");
+    expect(scriptSource).to.include("readTokenAllowance");
+    expect(scriptSource).to.not.include("new ethers.Wallet");
+    expect(scriptSource).to.not.include("approveOpenRailsSpend");
+    expect(scriptSource).to.not.include("submitOpenPaycardWithSigner");
+    expect(scriptSource).to.not.include("submitSettleWithSigner");
+    expect(scriptSource).to.not.include("submitFlushWithSigner");
   });
 
   it("server should expose x402-paid OpenRails artifacts without claiming Vault escrow", () => {
