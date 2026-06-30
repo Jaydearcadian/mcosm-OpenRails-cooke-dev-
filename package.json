@@ -1,7 +1,8 @@
 {
   "name": "openrails-v1-substrate",
   "version": "1.0.0",
-  "description": "OpenRails V1 - Intent-driven clearing and settlement infrastructure for streamed work on Arc. A payment rail for humans or agents: sign an intent, clear into a bounded Vault, settle as work is performed, recover residual.",
+  "private": true,
+  "description": "OpenRails V1 - Intent-driven clearing and settlement infrastructure for streamed work on Arc. A payment rail for humans or agents: sign an intent, clear into a bounded Vault, settle as work is performed, recover residual. (The publishable SDK is the standalone `openrails-sdk` package in ./sdk.)",
   "main": "sdk/dist/index.js",
   "types": "sdk/dist/index.d.ts",
   "bin": {
@@ -23,6 +24,9 @@
     "smoke:x402:stream": "ts-node experiments/x402-smoke/x402-to-stream.ts",
     "cockpit:dev": "npm --prefix cockpit run dev",
     "cockpit:build": "npm --prefix cockpit run build",
+    "cockpit:deploy": "npm --prefix cockpit run build && npx wrangler pages deploy cockpit/dist --project-name openrails-cockpit",
+    "bots:wallets": "ts-node scripts/gen-bot-wallets.ts",
+    "bots:run": "ts-node experiments/traction-bots/run-bots.ts",
     "deploy:openrails": "hardhat run scripts/deploy-openrails.ts --network arcTestnet",
     "smoke:testnet": "hardhat run scripts/smoke-openrails-testnet.ts --network arcTestnet"
   },

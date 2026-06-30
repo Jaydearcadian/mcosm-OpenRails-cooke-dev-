@@ -34,3 +34,11 @@ experiments/name-registry/
 # Stream gateway persistent projection (runtime data, non-authoritative)
 .openrails-stream/
 **/.openrails-stream/
+
+# Bot wallet fleet — PRIVATE KEYS, never commit
+.bot-wallets/
+**/.bot-wallets/
+experiments/traction-bots/metrics.json
+
+# npm pack tarballs (generated)
+*.tgz

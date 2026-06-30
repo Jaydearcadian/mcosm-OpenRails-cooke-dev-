@@ -6,7 +6,7 @@
  * can import from the package root:
  *
  * ```ts
- * import { LeptonOpenRailsClient, NonceEngine, ... } from 'openrails-v1-substrate';
+ * import { LeptonOpenRailsClient, NonceEngine, ... } from 'openrails-sdk';
  * ```
  */
 

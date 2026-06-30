@@ -1,5 +1,18 @@
 {
   "name": "openrails",
   "version": "1.0.0",
-  "description": "OpenRails CLI skills for stream request, payment, status, recovery, settlement, and close workflows."
+  "description": "OpenRails CLI skill for stream request, payment, status, recovery, settlement, and close workflows.",
+  "skills": ["skills/openrails/SKILL.md"],
+  "commands": [
+    "commands/openrails-request-stream.md",
+    "commands/openrails-pay-stream.md",
+    "commands/openrails-stream-status.md",
+    "commands/openrails-recover.md",
+    "commands/openrails-settle.md",
+    "commands/openrails-close.md"
+  ],
+  "requires": {
+    "bin": "openrails",
+    "install": "npm i -g openrails-sdk"
+  }
 }
