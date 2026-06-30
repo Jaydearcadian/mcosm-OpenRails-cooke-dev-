@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-base-900 text-ink-primary font-sans antialiased;
+    margin: 0;
+  }
+  /* Visible keyboard focus (quality floor) */
+  :focus-visible {
+    outline: 2px solid theme("colors.emerald.core");
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  ::selection {
+    background: theme("colors.emerald.glow");
+  }
+}
+
+@layer components {
+  /* Liquid-glass surface: frosted, specular highlight, deep shadow. */
+  .glass {
+    background: theme("colors.glass.bg");
+    border: 1px solid theme("colors.glass.border");
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(160%);
+    box-shadow: theme("boxShadow.glass");
+    border-radius: 1.25rem;
+  }
+  .glass-soft {
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+    border-radius: 1rem;
+  }
+  /* Telemetry data text */
+  .telemetry {
+    @apply font-mono tabular-nums tracking-tight;
+  }
+  .eyebrow {
+    @apply font-mono uppercase tracking-widest2 text-ink-secondary;
+    font-size: 11px;
+  }
+  /* Diagonal hazard fill for inactive nonce-lane bars */
+  .hazard {
+    background-image: repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.10),
+      rgba(255, 255, 255, 0.10) 6px,
+      rgba(255, 255, 255, 0.02) 6px,
+      rgba(255, 255, 255, 0.02) 12px
+    );
+  }
+  .demo-tag {
+    @apply font-mono uppercase tracking-widest2;
+    font-size: 9px;
+    color: rgba(255, 255, 255, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    padding: 1px 7px;
+  }
+}
+
+/* Respect reduced-motion: still the ambient + ticker animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

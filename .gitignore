@@ -22,6 +22,8 @@ docs/v1_release_notes.md
 docs/dashboard_frontend_and_endpoints.md
 # Contains a private Arc RPC auth token — never commit
 docs/canteen_cli_status.md
+# Local pickup/handoff briefing — not part of the shipped package
+docs/project_state_and_handoff.md
 
 # Local experiments not intended for this V1 package
 experiments/name-registry/
