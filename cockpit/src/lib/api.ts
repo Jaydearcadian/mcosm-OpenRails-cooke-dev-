@@ -5,6 +5,7 @@
  * source of truth; everything here is a projection and is labeled as such.
  */
 import { useEffect, useState } from "react";
+import { chainReads } from "./chainReads";
 
 const API_BASE = import.meta.env.VITE_OPENRAILS_API_BASE ?? "";
 
@@ -77,22 +78,24 @@ export interface RecoveredPaycard {
 }
 
 export const api = {
-  config: () => getJSON<GatewayConfig>("/api/config"),
+  // Gateway-first, with a client-side chain-read fallback so the cockpit works standalone
+  // (e.g. hosted on Cloudflare Pages with no backend). Indexer-only views degrade to empty.
+  config: () => getJSON<GatewayConfig>("/api/config").catch(() => chainReads.config()),
   streams: (q: Record<string, string> = {}) => {
     const qs = new URLSearchParams(q).toString();
     return getJSON<{ count: number; streams: StreamState[]; authoritative: boolean }>(
       `/api/streams${qs ? `?${qs}` : ""}`,
-    );
+    ).catch(() => ({ count: 0, streams: [] as StreamState[], authoritative: false }));
   },
   history: (paycardId: string) =>
     getJSON<{ paycardId: string; state: StreamState | null; events: StreamEvent[]; authoritative: boolean }>(
       `/api/streams/${paycardId}/history`,
-    ),
-  paycard: (id: string) => getJSON<PaycardOnchain>(`/api/paycard/${id}`),
-  balance: (address: string) => getJSON<{ balance: string }>(`/api/balance/${address}`),
-  allowance: (owner: string) => getJSON<{ allowance: string }>(`/api/allowance/${owner}`),
+    ).catch(() => ({ paycardId, state: null, events: [] as StreamEvent[], authoritative: false })),
+  paycard: (id: string) => getJSON<PaycardOnchain>(`/api/paycard/${id}`).catch(() => chainReads.paycard(id)),
+  balance: (address: string) => getJSON<{ balance: string }>(`/api/balance/${address}`).catch(() => chainReads.balance(address)),
+  allowance: (owner: string) => getJSON<{ allowance: string }>(`/api/allowance/${owner}`).catch(() => chainReads.allowance(owner)),
   nonce: (payer: string, channel: number) =>
-    getJSON<{ nonce: string }>(`/api/nonce/${payer}/${channel}`),
+    getJSON<{ nonce: string }>(`/api/nonce/${payer}/${channel}`).catch(() => chainReads.nonce(payer, channel)),
   recoverPaycards: (params: { payer?: string; recipient?: string; limit?: number }) => {
     const q = new URLSearchParams();
     if (params.payer) q.set("payer", params.payer);
@@ -100,7 +103,7 @@ export const api = {
     if (params.limit) q.set("limit", String(params.limit));
     return getJSON<{ results: RecoveredPaycard[]; count: number }>(
       `/api/paycards/recover?${q.toString()}`,
-    );
+    ).catch(() => chainReads.recoverPaycards(params));
   },
   x402Status: () =>
     fetch(`${API_BASE}/api/x402/openrails-artifact`, { redirect: "manual" }).then((r) => r),
