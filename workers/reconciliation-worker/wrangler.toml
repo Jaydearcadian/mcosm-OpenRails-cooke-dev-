@@ -1,19 +1,30 @@
 name = "openrails-reconciliation-worker"
 main = "src/index.ts"
 compatibility_date = "2026-06-24"
+compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ARC_CHAIN_ID = "5042002"
 ARC_RPC_URL = "https://rpc.testnet.arc.network"
 OPENRAILS_HUB_ADDRESS = "0x01EC54846524D043fD808152D41596beF603381d"
 ARC_USDC_ADDRESS = "0x3600000000000000000000000000000000000000"
-RECONCILIATION_BATCH_LIMIT = "10"
+# Settler config. "chain" (default) drip-settles ALL active rails from chain; "d1" uses the plays table.
+SETTLER_MODE = "chain"
+SETTLER_WINDOW_BLOCKS = "9000"
+MIN_ACCRUED_USDC = "0.0005"
+RECONCILIATION_BATCH_LIMIT = "25"
 MAX_SETTLEMENT_ATTEMPTS = "5"
 
-[[d1_databases]]
-binding = "STREAM_DB"
-database_name = "openrails_stream_db"
-database_id = "replace-with-d1-database-id"
+# Secrets (never in this file): set with `wrangler secret put RECONCILIATION_SIGNER_KEY`
+# (funded keeper wallet — pays gas only, non-custodial) and optionally RECONCILIATION_ADMIN_TOKEN
+# to guard the POST /reconcile trigger.
+
+# D1 is only needed for SETTLER_MODE = "d1" (legacy music-plays reconciliation). Uncomment and set
+# a real database_id to use it; the default "chain" settler needs no database.
+# [[d1_databases]]
+# binding = "STREAM_DB"
+# database_name = "openrails_stream_db"
+# database_id = "replace-with-d1-database-id"
 
 [triggers]
-crons = ["*/1 * * * *"]
+crons = ["*/10 * * * *"]

@@ -55,16 +55,32 @@ This database acts as the off-chain cache database tracking pending play events 
    ```
 2. Your worker endpoint will be live at `https://openrails-music-scrobble-worker.<subdomain>.workers.dev/webhook/scrobble`. You can point your Subsonic/Navidrome server webhook settings here.
 
-### B. Deploy Reconciliation Cron Worker
-1. Set up the signer private key secret (the EVM account that submits on-chain transactions on Arc Network):
+### B. Deploy the Settler Cron Worker (reconciliation-worker)
+
+A cron keeper that periodically **drip-settles active Paycard Streams** so recipients get paid
+without anyone clicking "settle". It **only settles** (`processDripSettle`) — it never opens or
+closes a rail; opening and closure (residual flush) stay with the payer/merchant/creator. Settling
+is permissionless and non-custodial: funds always flow payer → recipient per on-chain state; the
+keeper only pays gas.
+
+- **`SETTLER_MODE = "chain"` (default):** enumerates active streams from chain
+  (`PaycardProvisioned` logs → `registry`) — **no D1 required**. Streaming rails settle repeatedly
+  once accrued value clears `MIN_ACCRUED_USDC`; one-time (`lifespanSeconds == 0`) rails settle once.
+- **`SETTLER_MODE = "d1"`:** legacy — settle only paycards referenced by the music `plays` table
+  (needs the D1 setup in §2.B; uncomment `[[d1_databases]]` in the worker `wrangler.toml`).
+
+1. Fund a keeper wallet with Arc testnet gas, then set its key as a secret (never in the repo):
    ```bash
    cd ../reconciliation-worker
    npm install
    npx wrangler secret put RECONCILIATION_SIGNER_KEY
-   # Enter the funded deployer or relayer private key when prompted
+   # paste the funded keeper private key when prompted
    ```
-2. Deploy the Worker:
+2. (Optional) validate the bundle, then deploy:
    ```bash
+   npx wrangler deploy --dry-run   # bundle check, no deploy
    npx wrangler deploy
    ```
-3. This Worker will run automatically every 1 minute to check for unsettled plays and trigger `processDripSettle()` onchain.
+3. Runs every 10 minutes (`crons = ["*/10 * * * *"]`); tune interval, `MIN_ACCRUED_USDC`,
+   `RECONCILIATION_BATCH_LIMIT`, and `SETTLER_WINDOW_BLOCKS` in `wrangler.toml`. Trigger manually
+   with an authenticated `POST /reconcile` when `RECONCILIATION_ADMIN_TOKEN` is set.

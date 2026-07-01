@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 
 export interface Env {
-  STREAM_DB: D1Database;
+  STREAM_DB?: D1Database; // only used in the legacy "d1" settler mode
   ARC_RPC_URL: string;
   ARC_CHAIN_ID: string;
   OPENRAILS_HUB_ADDRESS: string;
@@ -9,11 +9,15 @@ export interface Env {
   RECONCILIATION_ADMIN_TOKEN?: string;
   RECONCILIATION_BATCH_LIMIT?: string;
   MAX_SETTLEMENT_ATTEMPTS?: string;
+  SETTLER_MODE?: string; // "chain" (default) — settle all active rails; or "d1" — legacy plays table
+  SETTLER_WINDOW_BLOCKS?: string; // getLogs lookback (default 9000; public RPC caps ~10k)
+  MIN_ACCRUED_USDC?: string; // skip streaming settles below this accrued amount (default 0.0005)
 }
 
 const HUB_ABI = [
   "function processDripSettle(bytes32 paycardId) external",
-  "function registry(bytes32 paycardId) external view returns (address payer, address recipient, bytes32 metadataHash, uint256 totalAllocationPool, uint256 availableBalance, uint256 flowVelocityPerSecond, uint256 genesisTimestamp, uint256 lifespanSeconds, uint256 lastCheckpointEpoch, address residualDeltaRecipient, uint8 operationalStatus)"
+  "function registry(bytes32 paycardId) external view returns (address payer, address recipient, bytes32 metadataHash, uint256 totalAllocationPool, uint256 availableBalance, uint256 flowVelocityPerSecond, uint256 genesisTimestamp, uint256 lifespanSeconds, uint256 lastCheckpointEpoch, address residualDeltaRecipient, uint8 operationalStatus)",
+  "event PaycardProvisioned(bytes32 indexed paycardId, address indexed payer, address indexed recipient, bytes32 metadataHash, uint256 poolAllocation, uint256 flowVelocityPerSecond, uint256 genesisTimestamp, uint256 lifespanSeconds)"
 ];
 
 function jsonResponse(body: Record<string, unknown>, status = 200): Response {
@@ -70,12 +74,83 @@ export default {
       console.warn("[reconciliation-worker] Aborting: RECONCILIATION_SIGNER_KEY is not configured.");
       return;
     }
+    const mode = (env.SETTLER_MODE || "chain").toLowerCase();
+    if (mode === "d1") return this.reconcileFromD1(env);
+    return this.settleActiveRails(env);
+  },
+
+  // Generic rails settler: enumerate active Paycard Streams from chain and drip-settle them.
+  // The keeper ONLY settles (processDripSettle) — it never opens (openPaycardChannel) or closes
+  // (flushResidualDelta); opening and closure stay with payer/merchant/creator. Permissionless +
+  // non-custodial: funds always flow payer -> recipient per on-chain state; the keeper pays gas.
+  async settleActiveRails(env: Env): Promise<void> {
+    const batchLimit = readPositiveInt(env.RECONCILIATION_BATCH_LIMIT, 25);
+    const windowBlocks = readPositiveInt(env.SETTLER_WINDOW_BLOCKS, 9000);
+    const minAccruedBase = BigInt(Math.round(Number(env.MIN_ACCRUED_USDC ?? "0.0005") * 1_000_000));
+
+    const provider = new ethers.JsonRpcProvider(env.ARC_RPC_URL);
+    const signer = new ethers.Wallet(env.RECONCILIATION_SIGNER_KEY!, provider);
+    const hub = new ethers.Contract(env.OPENRAILS_HUB_ADDRESS, HUB_ABI, signer);
+
+    const latest = await provider.getBlockNumber();
+    const fromBlock = Math.max(0, latest - windowBlocks);
+    const logs = await hub.queryFilter(hub.filters.PaycardProvisioned(), fromBlock, latest);
+    const ids = [...new Set(logs.map((l: any) => l.args?.paycardId as string))];
+    console.log(`[settler] ${ids.length} provisioned streams in blocks [${fromBlock}, ${latest}]`);
+
+    const now = Math.floor(Date.now() / 1000);
+    let settled = 0, skipped = 0, errors = 0;
+    for (const paycardId of ids) {
+      if (settled >= batchLimit) break;
+      try {
+        const s = await hub.registry(paycardId);
+        if (Number(s.operationalStatus) !== 0) { skipped++; continue; } // not Active
+        const available = BigInt(s.availableBalance);
+        if (available === 0n) { skipped++; continue; } // nothing left to settle
+
+        const lifespan = BigInt(s.lifespanSeconds);
+        if (lifespan === 0n) {
+          // One-time (instant): the full amount unlocks on the first settle. available > 0 means
+          // it hasn't been settled yet — settle it once. Afterwards available is 0 and it's skipped.
+        } else {
+          // Streaming: only settle when accrued-since-checkpoint clears the dust threshold, so the
+          // cron doesn't burn gas on negligible drips.
+          const velocity = BigInt(s.flowVelocityPerSecond);
+          const genesis = BigInt(s.genesisTimestamp);
+          const lastCheckpoint = BigInt(s.lastCheckpointEpoch);
+          const end = genesis + lifespan;
+          const upto = BigInt(now) < end ? BigInt(now) : end;
+          const elapsed = upto > lastCheckpoint ? upto - lastCheckpoint : 0n;
+          let accrued = velocity * elapsed;
+          if (accrued > available) accrued = available;
+          if (accrued < minAccruedBase) { skipped++; continue; }
+        }
+
+        const tx = await hub.processDripSettle(paycardId);
+        await tx.wait();
+        settled++;
+        console.log(`[settler] settled ${paycardId} (${tx.hash})`);
+      } catch (error) {
+        errors++;
+        console.error(`[settler] settle failed ${paycardId}:`, (error as Error).message?.slice(0, 300));
+      }
+    }
+    console.log(`[settler] done — settled ${settled}, skipped ${skipped}, errors ${errors}`);
+  },
+
+  // Legacy mode: settle only paycards referenced by unsettled rows in the music "plays" D1 table.
+  async reconcileFromD1(env: Env): Promise<void> {
+    if (!env.STREAM_DB) {
+      console.warn("[reconciliation-worker] d1 mode requires STREAM_DB binding.");
+      return;
+    }
+    const db = env.STREAM_DB;
 
     const maxAttempts = readPositiveInt(env.MAX_SETTLEMENT_ATTEMPTS, 5);
     const batchLimit = readPositiveInt(env.RECONCILIATION_BATCH_LIMIT, 10);
 
     // 1. Fetch unique paycardIds with pending (unsettled) play counts
-    const { results } = await env.STREAM_DB.prepare(
+    const { results } = await db.prepare(
       "SELECT DISTINCT paycard_id FROM plays WHERE settled = 0 AND settlement_attempts < ? LIMIT ?"
     ).bind(maxAttempts, batchLimit).all();
 
@@ -95,13 +170,13 @@ export default {
       const paycardId = row.paycard_id as string;
       if (!ethers.isHexString(paycardId, 32)) {
         console.warn(`[reconciliation-worker] Invalid paycardId ${paycardId}. Marking as skipped.`);
-        await env.STREAM_DB.prepare(
+        await db.prepare(
           "UPDATE plays SET settled = 2, last_error = ?, updated_at = ? WHERE paycard_id = ? AND settled = 0"
         ).bind("invalid paycardId", Math.floor(Date.now() / 1000), paycardId).run();
         continue;
       }
 
-      const locked = await env.STREAM_DB.prepare(
+      const locked = await db.prepare(
         "UPDATE plays SET settled = 3, settlement_attempts = settlement_attempts + 1, updated_at = ? WHERE paycard_id = ? AND settled = 0 AND settlement_attempts < ?"
       ).bind(Math.floor(Date.now() / 1000), paycardId, maxAttempts).run();
 
@@ -118,7 +193,7 @@ export default {
         if (operationalStatus !== 0) {
           console.warn(`[reconciliation-worker] Stream ${paycardId} is not Active (Status: ${operationalStatus}). Marking as skipped.`);
           // Mark as settled/processed to avoid infinite retry loops
-          await env.STREAM_DB.prepare(
+          await db.prepare(
             "UPDATE plays SET settled = 2, last_error = ?, updated_at = ? WHERE paycard_id = ? AND settled = 3"
           ).bind(`inactive status ${operationalStatus}`, Math.floor(Date.now() / 1000), paycardId).run();
           continue;
@@ -131,14 +206,14 @@ export default {
         console.log(`[reconciliation-worker] Settlement transaction confirmed: ${tx.hash}`);
 
         // 4. Update plays in D1 cache to mark as settled (1 = settled)
-        await env.STREAM_DB.prepare(
+        await db.prepare(
           "UPDATE plays SET settled = 1, last_error = NULL, updated_at = ? WHERE paycard_id = ? AND settled = 3"
         ).bind(Math.floor(Date.now() / 1000), paycardId).run();
 
       } catch (error) {
         console.error(`[reconciliation-worker] Failed to settle stream ${paycardId}:`, error);
         const message = (error as Error).message?.slice(0, 500) || "settlement failed";
-        await env.STREAM_DB.prepare(
+        await db.prepare(
           "UPDATE plays SET settled = CASE WHEN settlement_attempts >= ? THEN 2 ELSE 0 END, last_error = ?, updated_at = ? WHERE paycard_id = ? AND settled = 3"
         ).bind(maxAttempts, message, Math.floor(Date.now() / 1000), paycardId).run();
       }
