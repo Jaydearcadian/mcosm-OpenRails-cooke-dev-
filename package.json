@@ -24,7 +24,7 @@
     "smoke:x402:stream": "ts-node experiments/x402-smoke/x402-to-stream.ts",
     "cockpit:dev": "npm --prefix cockpit run dev",
     "cockpit:build": "npm --prefix cockpit run build",
-    "cockpit:deploy": "npm --prefix cockpit run build && npx wrangler pages deploy cockpit/dist --project-name openrails-cockpit",
+    "cockpit:deploy": "npm --prefix cockpit run build && npx wrangler pages deploy cockpit/dist --project-name openrails --branch main",
     "bots:wallets": "ts-node scripts/gen-bot-wallets.ts",
     "bots:run": "ts-node experiments/traction-bots/run-bots.ts",
     "deploy:openrails": "hardhat run scripts/deploy-openrails.ts --network arcTestnet",
