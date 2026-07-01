@@ -15,7 +15,6 @@ import Streams from "./Streams";
 import Profile from "./Profile";
 import Merchant from "./Merchant";
 import Creator from "./Creator";
-import Explorer from "./Explorer";
 
 export default function Cockpit() {
   const [tab, setTab] = useState<CockpitTab>("deck");
@@ -61,7 +60,6 @@ export default function Cockpit() {
         {tab === "profile" && <Profile />}
         {tab === "merchant" && <Merchant />}
         {tab === "creator" && <Creator />}
-        {tab === "explorer" && <Explorer />}
       </motion.main>
     </div>
   );

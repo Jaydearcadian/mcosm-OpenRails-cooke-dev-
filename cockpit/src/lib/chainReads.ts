@@ -5,8 +5,8 @@
  * with viem. `api.*` read calls fall back to these when the gateway is unreachable.
  *
  * Indexer-only views (the streams projection, per-stream history, workflow grouping) have no
- * cheap chain equivalent, so they degrade to empty in standalone mode (Deck/Explorer show demo
- * data); My Streams + Profile still work via recover + registry.
+ * cheap chain equivalent, so they degrade to honest empty states in standalone mode; My Streams
+ * + Profile still work via recover + registry.
  */
 import { createPublicClient, http, parseAbiItem, getAddress } from "viem";
 import { arcTestnet } from "./chain";
