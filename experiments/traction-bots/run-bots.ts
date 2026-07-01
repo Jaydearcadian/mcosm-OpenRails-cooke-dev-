@@ -10,7 +10,11 @@
  *   OPS_PER_BOT=2 AMOUNT_USDC=0.002 npm run bots:run
  *
  * Env: RPC_URL, OPS_PER_BOT, AMOUNT_USDC, VELOCITY_BASE_PER_SEC, LIFESPAN_SECONDS, BUDGET_USDC,
- *      ARC_OPENRAILS_HUB_ADDRESS, ARC_USDC_ADDRESS, ARC_CHAIN_ID (else read from registry).
+ *      BOT_METADATA_REF, ARC_OPENRAILS_HUB_ADDRESS, ARC_USDC_ADDRESS, ARC_CHAIN_ID (else registry).
+ *
+ * Opsec: the on-chain metadataRef is deliberately neutral (BOT_METADATA_REF) so runs do not
+ * publicly brand the payments or fingerprint the fleet as one operator. The simulation labelling
+ * and per-bot/per-op detail live only in the gitignored metrics.json, never on-chain.
  */
 import { ethers } from "ethers";
 import * as fs from "fs";
@@ -40,6 +44,8 @@ const VELOCITY = BigInt(process.env.VELOCITY_BASE_PER_SEC || "5"); // base units
 const LIFESPAN = Number(process.env.LIFESPAN_SECONDS || "300");
 const BUDGET_USDC = Number(process.env.BUDGET_USDC || "0.05");
 const NONCE_CHANNEL = Number(process.env.BOT_NONCE_CHANNEL || "777");
+// Neutral on-chain reference — no operator/sim fingerprint on the public ledger.
+const METADATA_REF = process.env.BOT_METADATA_REF || "openrails-stream";
 
 const walletsFile = path.join(__dirname, "..", "..", ".bot-wallets", "wallets.json");
 const metricsFile = path.join(__dirname, "metrics.json");
@@ -114,7 +120,7 @@ async function main(): Promise<void> {
           amount: allocation.toString(),
           flowVelocityPerSecond: VELOCITY.toString(),
           lifespanSeconds: LIFESPAN,
-          metadataRef: `traction-sim:bot${bot.index}:op${k}`,
+          metadataRef: METADATA_REF,
         };
         const metadataHash = hashOpenRailsMetadata(metadata);
         const paycardId = buildMetadataBoundPaycardId({ payer: bot.address, nonceChannel: NONCE_CHANNEL, nonceValue: nonce, metadataHash });

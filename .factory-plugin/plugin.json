@@ -13,6 +13,7 @@
   ],
   "requires": {
     "bin": "openrails",
-    "install": "npm i -g openrails-sdk"
+    "install": "npm i -g openrails-sdk@0.1.0",
+    "note": "Pinned version; install only after openrails-sdk@0.1.0 is published to npm."
   }
 }
