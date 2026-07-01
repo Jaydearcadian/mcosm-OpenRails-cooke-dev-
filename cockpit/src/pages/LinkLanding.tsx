@@ -92,7 +92,7 @@ export default function LinkLanding() {
     }
   }, []);
 
-  const explorer = config?.explorerBaseUrl ?? "https://explorer.testnet.arc.network";
+  const explorer = config?.explorerBaseUrl ?? "https://testnet.arcscan.app";
 
   return (
     <div className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10">

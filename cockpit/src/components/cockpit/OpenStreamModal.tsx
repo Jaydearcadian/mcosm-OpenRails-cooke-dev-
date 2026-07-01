@@ -258,7 +258,7 @@ export function OpenStreamModal({
   const showPreview =
     !isNaN(amtNum) && amtNum > 0 && !isNaN(velNum) && velNum > 0 && !isNaN(lsNum) && lsNum > 0;
 
-  const explorerBase = config?.explorerBaseUrl ?? "https://explorer.testnet.arc.network";
+  const explorerBase = config?.explorerBaseUrl ?? "https://testnet.arcscan.app";
 
   return (
     <AnimatePresence>

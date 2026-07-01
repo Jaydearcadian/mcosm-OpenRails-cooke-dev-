@@ -77,7 +77,7 @@ export default function Streams() {
   const [modalOpen, setModalOpen] = useState(false);
 
   const hubAddress = config?.clearinghouseAddress ?? "";
-  const explorerBase = config?.explorerBaseUrl ?? "https://explorer.testnet.arc.network";
+  const explorerBase = config?.explorerBaseUrl ?? "https://testnet.arcscan.app";
 
   return (
     <motion.div variants={revealParent} initial="hidden" animate="show" className="pb-10">

@@ -184,7 +184,7 @@ function Timeline({ events, explorerBase }: { events: StreamEvent[]; explorerBas
 export default function Profile() {
   const { address } = useAccount();
   const { config } = useConfig();
-  const explorerBase = config?.explorerBaseUrl ?? "https://explorer.testnet.arc.network";
+  const explorerBase = config?.explorerBaseUrl ?? "https://testnet.arcscan.app";
 
   const [input, setInput] = useState("");
   const [target, setTarget] = useState<string | undefined>(undefined);

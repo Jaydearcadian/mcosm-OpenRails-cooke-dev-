@@ -19,7 +19,7 @@ export const BUNDLED_CONFIG: GatewayConfig = {
   chainId: 5042002,
   clearinghouseAddress: "0x01EC54846524D043fD808152D41596beF603381d",
   usdcAddress: "0x3600000000000000000000000000000000000000",
-  explorerBaseUrl: "https://explorer.testnet.arc.network",
+  explorerBaseUrl: "https://testnet.arcscan.app",
   relayerMode: "client-self-submit",
 };
 

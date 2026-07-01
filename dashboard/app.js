@@ -363,7 +363,7 @@ function getWalletNetworkParams() {
       decimals: 6,
     },
     rpcUrls: ["https://rpc.testnet.arc.network"],
-    blockExplorerUrls: [config.explorerBaseUrl || "https://explorer.testnet.arc.network"],
+    blockExplorerUrls: [config.explorerBaseUrl || "https://testnet.arcscan.app"],
   };
 }
 
