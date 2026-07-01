@@ -66,6 +66,9 @@ function StreamRow({ s }: { s: ProfileStream }) {
         >
           {active ? "ACTIVE" : "CLOSED"}
         </span>
+        <span className="shrink-0 rounded border border-white/10 px-1.5 py-0.5 font-mono text-[9px] text-ink-faint">
+          {st.lifespanSeconds === 0 ? "one-time" : "streaming"}
+        </span>
         <span className="truncate font-mono text-[11px] text-ink-secondary" title={st.paycardId}>
           {shortHex(st.paycardId, 8, 6)}
         </span>

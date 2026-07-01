@@ -85,12 +85,12 @@ export const api = {
     const qs = new URLSearchParams(q).toString();
     return getJSON<{ count: number; streams: StreamState[]; authoritative: boolean }>(
       `/api/streams${qs ? `?${qs}` : ""}`,
-    ).catch(() => ({ count: 0, streams: [] as StreamState[], authoritative: false }));
+    ).catch(() => chainReads.streams(q));
   },
   history: (paycardId: string) =>
     getJSON<{ paycardId: string; state: StreamState | null; events: StreamEvent[]; authoritative: boolean }>(
       `/api/streams/${paycardId}/history`,
-    ).catch(() => ({ paycardId, state: null, events: [] as StreamEvent[], authoritative: false })),
+    ).catch(() => chainReads.history(paycardId)),
   paycard: (id: string) => getJSON<PaycardOnchain>(`/api/paycard/${id}`).catch(() => chainReads.paycard(id)),
   balance: (address: string) => getJSON<{ balance: string }>(`/api/balance/${address}`).catch(() => chainReads.balance(address)),
   allowance: (owner: string) => getJSON<{ allowance: string }>(`/api/allowance/${owner}`).catch(() => chainReads.allowance(owner)),

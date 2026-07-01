@@ -11,7 +11,7 @@
 import { createPublicClient, http, parseAbiItem, getAddress } from "viem";
 import { arcTestnet } from "./chain";
 import { HUB_ABI } from "./contracts";
-import type { GatewayConfig, PaycardOnchain, RecoveredPaycard } from "./api";
+import type { GatewayConfig, PaycardOnchain, RecoveredPaycard, StreamState, StreamEvent, PaycardStatus } from "./api";
 
 // Public Arc testnet config (addresses are public, not secrets).
 export const BUNDLED_CONFIG: GatewayConfig = {
@@ -27,6 +27,16 @@ const HUB = BUNDLED_CONFIG.clearinghouseAddress as `0x${string}`;
 const PROVISIONED = parseAbiItem(
   "event PaycardProvisioned(bytes32 indexed paycardId, address indexed payer, address indexed recipient, bytes32 metadataHash, uint256 poolAllocation, uint256 flowVelocityPerSecond, uint256 genesisTimestamp, uint256 lifespanSeconds)",
 );
+const SETTLED = parseAbiItem(
+  "event SettlementFlushed(bytes32 indexed paycardId, address indexed recipient, uint256 amountWithdrawn)",
+);
+const RECLAIMED = parseAbiItem(
+  "event ResidualDeltaReclaimed(bytes32 indexed paycardId, address indexed recoveryVault, uint256 varianceSwept)",
+);
+
+const WINDOW = 9000n; // public RPC caps getLogs at ~10k blocks
+const stringifyArgs = (a: Record<string, unknown> = {}): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(a).map(([k, v]) => [k, typeof v === "bigint" ? v.toString() : v]));
 
 const client = createPublicClient({ chain: arcTestnet, transport: http("https://rpc.testnet.arc.network") });
 
@@ -102,5 +112,79 @@ export const chainReads = {
       },
     }));
     return { results, count: results.length };
+  },
+
+  // Reconstruct the stream list from PaycardProvisioned logs + registry hydrate, so the Deck
+  // telemetry works standalone. Bounded to the recent block window (public RPC getLogs cap).
+  streams: async (
+    q: Record<string, string> = {},
+  ): Promise<{ count: number; streams: StreamState[]; authoritative: boolean }> => {
+    const latest = await client.getBlockNumber();
+    const fromBlock = latest > WINDOW ? latest - WINDOW : 0n;
+    const logs = await client.getLogs({
+      address: HUB,
+      event: PROVISIONED,
+      args: {
+        ...(q.payer ? { payer: getAddress(q.payer) } : {}),
+        ...(q.recipient ? { recipient: getAddress(q.recipient) } : {}),
+      },
+      fromBlock,
+      toBlock: "latest",
+    });
+    const ids = [...new Set(logs.map((l) => l.args.paycardId as string))];
+    const cards = await Promise.all(ids.map((id) => chainReads.paycard(id).catch(() => null)));
+    const streams: StreamState[] = cards
+      .filter((c): c is PaycardOnchain => c !== null)
+      .map((c) => ({
+        paycardId: c.paycardId,
+        payer: c.payer,
+        recipient: c.recipient,
+        metadataHash: c.metadataHash,
+        totalAllocation: c.totalAllocationPool,
+        availableBalance: c.availableBalance,
+        velocity: c.flowVelocityPerSecond,
+        genesis: c.genesisTimestamp,
+        lifespan: c.lifespanSeconds,
+        lastCheckpoint: c.lastCheckpointEpoch,
+        status: (c.operationalStatus === "Active" ? "Active" : "Terminated") as PaycardStatus,
+      }));
+    return { count: streams.length, streams, authoritative: false };
+  },
+
+  // Per-stream event history from the three Hub events (indexed by paycardId), for LedgerTrails
+  // and DeltaCurve. blockTimestamp is omitted (LedgerTrails falls back to block number).
+  history: async (
+    paycardId: string,
+  ): Promise<{ paycardId: string; state: StreamState | null; events: StreamEvent[]; authoritative: boolean }> => {
+    const latest = await client.getBlockNumber();
+    const fromBlock = latest > WINDOW ? latest - WINDOW : 0n;
+    const defs = [
+      { name: "PaycardProvisioned", ev: PROVISIONED },
+      { name: "SettlementFlushed", ev: SETTLED },
+      { name: "ResidualDeltaReclaimed", ev: RECLAIMED },
+    ] as const;
+    const lists = await Promise.all(
+      defs.map((d) =>
+        client
+          .getLogs({ address: HUB, event: d.ev, args: { paycardId: paycardId as `0x${string}` }, fromBlock, toBlock: "latest" })
+          .catch(() => []),
+      ),
+    );
+    const events: StreamEvent[] = [];
+    lists.forEach((logs, i) => {
+      for (const l of logs as any[]) {
+        events.push({
+          paycardId,
+          eventName: defs[i].name,
+          blockNumber: Number(l.blockNumber),
+          transactionHash: l.transactionHash,
+          logIndex: Number(l.logIndex),
+          args: stringifyArgs(l.args),
+          recordedAt: Date.now(),
+        });
+      }
+    });
+    events.sort((a, b) => b.blockNumber - a.blockNumber || b.logIndex - a.logIndex);
+    return { paycardId, state: null, events, authoritative: false };
   },
 };

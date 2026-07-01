@@ -82,6 +82,7 @@ export function OpenStreamModal({
 
   // Form state
   const [mode, setMode] = useState<OpenRailsEnvelopeMode>("railsflow");
+  const [paymentType, setPaymentType] = useState<"streaming" | "onetime">("streaming");
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [velocityAmt, setVelocityAmt] = useState("");
@@ -98,6 +99,7 @@ export function OpenStreamModal({
 
   function resetForm() {
     setMode("railsflow");
+    setPaymentType("streaming");
     setRecipient("");
     setAmount("");
     setVelocityAmt("");
@@ -125,10 +127,12 @@ export function OpenStreamModal({
     if (!addrRe.test(recipient)) return "Invalid recipient address";
     const amtNum = parseFloat(amount);
     if (isNaN(amtNum) || amtNum <= 0) return "Invalid amount";
-    const velNum = parseFloat(velocityAmt);
-    if (isNaN(velNum) || velNum <= 0) return "Invalid velocity";
-    const lsNum = parseFloat(lifespanAmt);
-    if (isNaN(lsNum) || lsNum <= 0) return "Invalid lifespan";
+    if (paymentType === "streaming") {
+      const velNum = parseFloat(velocityAmt);
+      if (isNaN(velNum) || velNum <= 0) return "Invalid velocity";
+      const lsNum = parseFloat(lifespanAmt);
+      if (isNaN(lsNum) || lsNum <= 0) return "Invalid lifespan";
+    }
     const res = residualRecipient.trim() || address;
     if (!addrRe.test(res)) return "Invalid residual recipient address";
     return null;
@@ -146,9 +150,12 @@ export function OpenStreamModal({
     const effectiveRecipient =
       mode === "railscard_bearer" ? ZERO_ADDRESS : (recipient as `0x${string}`);
 
+    // One-time (instant): lifespanSeconds == 0 unlocks the full amount on first settle; velocity is
+    // irrelevant so it's zeroed. Streaming: linear drip over the lifespan at the set velocity.
+    const isOneTime = paymentType === "onetime";
     const totalAllocationPool = BigInt(Math.round(parseFloat(amount) * 1_000_000));
-    const flowVelocityPerSecond = velocityToBasePerSec(parseFloat(velocityAmt), velocityUnit);
-    const lifespanSeconds = lifespanToSeconds(parseFloat(lifespanAmt), lifespanUnit);
+    const flowVelocityPerSecond = isOneTime ? 0n : velocityToBasePerSec(parseFloat(velocityAmt), velocityUnit);
+    const lifespanSeconds = isOneTime ? 0n : lifespanToSeconds(parseFloat(lifespanAmt), lifespanUnit);
     const genesisTimestamp = BigInt(Math.floor(Date.now() / 1000));
 
     // Build canonical metadata
@@ -256,7 +263,9 @@ export function OpenStreamModal({
   const velNum = parseFloat(velocityAmt);
   const lsNum = parseFloat(lifespanAmt);
   const showPreview =
-    !isNaN(amtNum) && amtNum > 0 && !isNaN(velNum) && velNum > 0 && !isNaN(lsNum) && lsNum > 0;
+    paymentType === "onetime"
+      ? !isNaN(amtNum) && amtNum > 0
+      : !isNaN(amtNum) && amtNum > 0 && !isNaN(velNum) && velNum > 0 && !isNaN(lsNum) && lsNum > 0;
 
   const explorerBase = config?.explorerBaseUrl ?? "https://testnet.arcscan.app";
 
@@ -320,6 +329,31 @@ export function OpenStreamModal({
                 {MODES.find((m) => m.id === mode)?.hint}
               </p>
 
+              {/* Payment type: one-time (instant) vs streaming (drip) */}
+              <div>
+                <div className="flex gap-1.5 p-1 rounded-xl bg-white/5 border border-white/8">
+                  {(["streaming", "onetime"] as const).map((pt) => (
+                    <button
+                      key={pt}
+                      onClick={() => setPaymentType(pt)}
+                      disabled={busy}
+                      className={`flex-1 rounded-lg px-2 py-1.5 text-[11px] font-mono transition ${
+                        paymentType === pt
+                          ? "bg-emerald-core/20 text-emerald-core border border-emerald-core/30"
+                          : "text-ink-faint hover:text-ink-secondary"
+                      }`}
+                    >
+                      {pt === "streaming" ? "Streaming" : "One-time"}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[10px] text-ink-faint font-mono">
+                  {paymentType === "streaming"
+                    ? "Value drips over a lifespan at a set velocity"
+                    : "Full amount settles at once — instant, no drip"}
+                </p>
+              </div>
+
               {/* Core fields */}
               <Field
                 label={
@@ -355,6 +389,7 @@ export function OpenStreamModal({
                 />
               </Field>
 
+              {paymentType === "streaming" && (
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Velocity" hint="USDC per time unit">
                   <div className="flex gap-1.5">
@@ -410,16 +445,26 @@ export function OpenStreamModal({
                   </div>
                 </Field>
               </div>
+              )}
 
               {/* Preview */}
               {showPreview && (
                 <div className="rounded-lg bg-emerald-core/8 border border-emerald-core/20 px-3 py-2 font-mono text-[10px] text-emerald-core space-y-0.5">
-                  <div>
-                    ${fmtUsd(amtNum)} locked · ${fmtUsd(velNum)}/{velocityUnit} drip
-                  </div>
-                  <div>
-                    expires in {lsNum} {lifespanUnit}(s) · residual swept back on flush
-                  </div>
+                  {paymentType === "onetime" ? (
+                    <>
+                      <div>${fmtUsd(amtNum)} — paid in full, once (instant)</div>
+                      <div>settles on first drip · no time-based release</div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        ${fmtUsd(amtNum)} locked · ${fmtUsd(velNum)}/{velocityUnit} drip
+                      </div>
+                      <div>
+                        expires in {lsNum} {lifespanUnit}(s) · residual swept back on flush
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 

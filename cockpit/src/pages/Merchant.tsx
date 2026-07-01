@@ -48,6 +48,7 @@ export default function Merchant() {
   const { config } = useConfig();
   const chainId = config?.chainId ?? 5042002;
 
+  const [payType, setPayType] = useState<"streaming" | "onetime">("streaming");
   const [amount, setAmount] = useState("");
   const [velAmt, setVelAmt] = useState("");
   const [velUnit, setVelUnit] = useState<VelocityUnit>("hr");
@@ -68,14 +69,18 @@ export default function Merchant() {
     if (!addrRe.test(recv)) return setErr("Enter a valid recipient address (who gets paid).");
     const amt = parseFloat(amount);
     if (!(amt > 0)) return setErr("Enter an amount greater than 0.");
-    const vel = parseFloat(velAmt);
-    if (!(vel > 0)) return setErr("Enter a velocity greater than 0.");
-    const life = parseFloat(lifeAmt);
-    if (!(life > 0)) return setErr("Enter a lifespan greater than 0.");
+    const isOneTime = payType === "onetime";
+    if (!isOneTime) {
+      const vel = parseFloat(velAmt);
+      if (!(vel > 0)) return setErr("Enter a velocity greater than 0.");
+      const life = parseFloat(lifeAmt);
+      if (!(life > 0)) return setErr("Enter a lifespan greater than 0.");
+    }
 
+    // One-time (instant): lifespanSeconds = 0 unlocks the full amount on first settle; velocity 0.
     const amountBase = BigInt(Math.round(amt * 1_000_000)).toString();
-    const flowVelocityPerSecond = velocityToBasePerSec(vel, velUnit).toString();
-    const lifespanSeconds = Number(lifespanToSeconds(life, lifeUnit));
+    const flowVelocityPerSecond = isOneTime ? "0" : velocityToBasePerSec(parseFloat(velAmt), velUnit).toString();
+    const lifespanSeconds = isOneTime ? 0 : Number(lifespanToSeconds(parseFloat(lifeAmt), lifeUnit));
 
     const metadata: CanonicalMetadataV1 = {
       version: "openrails-metadata-v1",
@@ -131,10 +136,24 @@ export default function Merchant() {
         <Glass className="p-5">
           <Eyebrow>New request</Eyebrow>
           <div className="mt-4 flex flex-col gap-3">
+            <div className="flex gap-1.5 rounded-xl border border-white/8 bg-white/5 p-1">
+              {(["streaming", "onetime"] as const).map((pt) => (
+                <button
+                  key={pt}
+                  onClick={() => setPayType(pt)}
+                  className={`flex-1 rounded-lg px-2 py-1.5 font-mono text-[11px] transition ${
+                    payType === pt ? "bg-emerald-core/20 text-emerald-core ring-1 ring-emerald-core/40" : "text-ink-faint hover:text-ink-secondary"
+                  }`}
+                >
+                  {pt === "streaming" ? "Streaming" : "One-time"}
+                </button>
+              ))}
+            </div>
             <label className="flex flex-col gap-1">
               <span className="eyebrow">Amount (USDC)</span>
               <input className={inputCls} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="50.00" inputMode="decimal" />
             </label>
+            {payType === "streaming" && (
             <div className="flex gap-2">
               <label className="flex flex-1 flex-col gap-1">
                 <span className="eyebrow">Velocity</span>
@@ -147,6 +166,8 @@ export default function Merchant() {
                 </select>
               </label>
             </div>
+            )}
+            {payType === "streaming" && (
             <div className="flex gap-2">
               <label className="flex flex-1 flex-col gap-1">
                 <span className="eyebrow">Lifespan</span>
@@ -159,6 +180,10 @@ export default function Merchant() {
                 </select>
               </label>
             </div>
+            )}
+            {payType === "onetime" && (
+              <p className="font-mono text-[10px] text-ink-faint">One-time · full amount settles at once (instant, no drip).</p>
+            )}
             <label className="flex flex-col gap-1">
               <span className="eyebrow">Recipient (who gets paid)</span>
               <input className={inputCls} value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder="0x… (defaults to you)" />
@@ -193,9 +218,16 @@ export default function Merchant() {
               <div className="glass-soft p-4">
                 <div className="eyebrow mb-2">Terms</div>
                 <dl className="grid grid-cols-2 gap-y-1 font-mono text-[11px]">
+                  <dt className="text-ink-faint">Type</dt><dd className="text-right text-emerald-core">{link.payload.lifespanSeconds === 0 ? "One-time" : "Streaming"}</dd>
                   <dt className="text-ink-faint">Amount</dt><dd className="text-right text-ink-primary">${fmtUsd(toUsdc(link.payload.amount))}</dd>
-                  <dt className="text-ink-faint">Velocity</dt><dd className="text-right text-ink-secondary">{(Number(link.payload.flowVelocityPerSecond) / 1e6 * 3600).toFixed(4)} USDC/hr</dd>
-                  <dt className="text-ink-faint">Lifespan</dt><dd className="text-right text-ink-secondary">{link.payload.lifespanSeconds}s</dd>
+                  {link.payload.lifespanSeconds === 0 ? (
+                    <><dt className="text-ink-faint">Settles</dt><dd className="text-right text-ink-secondary">in full, once</dd></>
+                  ) : (
+                    <>
+                      <dt className="text-ink-faint">Velocity</dt><dd className="text-right text-ink-secondary">{(Number(link.payload.flowVelocityPerSecond) / 1e6 * 3600).toFixed(4)} USDC/hr</dd>
+                      <dt className="text-ink-faint">Lifespan</dt><dd className="text-right text-ink-secondary">{link.payload.lifespanSeconds}s</dd>
+                    </>
+                  )}
                   <dt className="text-ink-faint">Recipient</dt><dd className="text-right text-ink-secondary">{shortHex(link.payload.recipient, 6, 4)}</dd>
                   {link.payload.metadataRef && (<><dt className="text-ink-faint">Note</dt><dd className="truncate text-right text-ink-secondary" title={link.payload.metadataRef}>{link.payload.metadataRef}</dd></>)}
                 </dl>

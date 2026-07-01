@@ -40,6 +40,7 @@ interface Terms {
   valueUsdc: number;
   velocityHr: string;
   lifespanSeconds: number;
+  instant: boolean;
   counterpartyLabel: string;
   counterparty: string;
   note: string;
@@ -50,18 +51,20 @@ function buildTerms(a: OpenRailsLinkArtifact): Terms {
     const pl = a.payload as RailsCardLinkPayload;
     const env = deserializeEnvelope<CryptographicEnvelopeV1>(pl.envelopeToken);
     const m = env.metadata;
+    const lifespanSeconds = Number(m?.lifespanSeconds ?? env.intent.lifespanSeconds);
     return {
       kind: "railscard",
       title: "Claim a RailsCard",
       action: "Claim this card",
       valueUsdc: toUsdc(m?.amount ?? env.intent.totalAllocationPool),
       velocityHr: velPerHr(m?.flowVelocityPerSecond ?? env.intent.flowVelocityPerSecond),
-      lifespanSeconds: Number(m?.lifespanSeconds ?? env.intent.lifespanSeconds),
+      lifespanSeconds,
+      instant: lifespanSeconds === 0,
       counterpartyLabel: "From (payer)",
       counterparty: env.payerAddress,
       note:
         pl.mode === "railscard_bearer"
-          ? "The stream opens to your connected wallet. Escrow is pulled from the payer (they already signed) — you only pay gas."
+          ? "The value opens to your connected wallet. Escrow is pulled from the payer (they already signed) — you only pay gas."
           : "This card is recipient-bound. Escrow is pulled from the payer — you only pay gas.",
     };
   }
@@ -69,13 +72,14 @@ function buildTerms(a: OpenRailsLinkArtifact): Terms {
   return {
     kind: "railsflow",
     title: "Pay a RailsFlow request",
-    action: "Pay · open stream",
+    action: pl.lifespanSeconds === 0 ? "Pay · in full" : "Pay · open stream",
     valueUsdc: toUsdc(pl.amount),
     velocityHr: velPerHr(pl.flowVelocityPerSecond),
     lifespanSeconds: pl.lifespanSeconds,
+    instant: pl.lifespanSeconds === 0,
     counterpartyLabel: "Recipient",
     counterparty: pl.recipient,
-    note: "You are the payer. USDC escrow comes from your connected wallet, streams to the recipient, and unspent residual returns to you when it ends.",
+    note: "You are the payer. USDC escrow comes from your connected wallet, goes to the recipient, and unspent residual returns to you.",
   };
 }
 
@@ -123,12 +127,23 @@ export default function LinkLanding() {
             </div>
 
             <dl className="mt-5 grid grid-cols-2 gap-y-2 border-t border-white/8 pt-4 font-mono text-[12px]">
+              <dt className="text-ink-faint">Type</dt>
+              <dd className="text-right text-emerald-core">{parsed.terms.instant ? "One-time" : "Streaming"}</dd>
               <dt className="text-ink-faint">Value</dt>
               <dd className="text-right text-ink-primary">${fmtUsd(parsed.terms.valueUsdc)} USDC</dd>
-              <dt className="text-ink-faint">Velocity</dt>
-              <dd className="text-right text-ink-secondary">{parsed.terms.velocityHr} USDC/hr</dd>
-              <dt className="text-ink-faint">Lifespan</dt>
-              <dd className="text-right text-ink-secondary">{humanDuration(parsed.terms.lifespanSeconds)}</dd>
+              {parsed.terms.instant ? (
+                <>
+                  <dt className="text-ink-faint">Settles</dt>
+                  <dd className="text-right text-ink-secondary">in full, once</dd>
+                </>
+              ) : (
+                <>
+                  <dt className="text-ink-faint">Velocity</dt>
+                  <dd className="text-right text-ink-secondary">{parsed.terms.velocityHr} USDC/hr</dd>
+                  <dt className="text-ink-faint">Lifespan</dt>
+                  <dd className="text-right text-ink-secondary">{humanDuration(parsed.terms.lifespanSeconds)}</dd>
+                </>
+              )}
               <dt className="text-ink-faint">{parsed.terms.counterpartyLabel}</dt>
               <dd className="text-right text-ink-secondary">{shortHex(parsed.terms.counterparty, 8, 6)}</dd>
             </dl>

@@ -161,9 +161,16 @@ function ClaimCard() {
             <span className="font-mono text-[10px] text-emerald-core">{(artifact.payload as RailsCardLinkPayload).mode.replace("railscard_", "")}</span>
           </div>
           <dl className="mt-3 grid grid-cols-2 gap-y-1 font-mono text-[11px]">
+            <dt className="text-ink-faint">Type</dt><dd className="text-right text-emerald-core">{m.lifespanSeconds === 0 ? "One-time" : "Streaming"}</dd>
             <dt className="text-ink-faint">Value</dt><dd className="text-right text-ink-primary">${fmtUsd(toUsdc(m.amount))}</dd>
-            <dt className="text-ink-faint">Velocity</dt><dd className="text-right text-ink-secondary">{(Number(m.flowVelocityPerSecond) / 1e6 * 3600).toFixed(4)} USDC/hr</dd>
-            <dt className="text-ink-faint">Lifespan</dt><dd className="text-right text-ink-secondary">{m.lifespanSeconds}s</dd>
+            {m.lifespanSeconds === 0 ? (
+              <><dt className="text-ink-faint">Settles</dt><dd className="text-right text-ink-secondary">in full, once</dd></>
+            ) : (
+              <>
+                <dt className="text-ink-faint">Velocity</dt><dd className="text-right text-ink-secondary">{(Number(m.flowVelocityPerSecond) / 1e6 * 3600).toFixed(4)} USDC/hr</dd>
+                <dt className="text-ink-faint">Lifespan</dt><dd className="text-right text-ink-secondary">{m.lifespanSeconds}s</dd>
+              </>
+            )}
             <dt className="text-ink-faint">From (payer)</dt><dd className="text-right text-ink-secondary">{shortHex(envelope.payerAddress, 6, 4)}</dd>
             <dt className="text-ink-faint">Paycard</dt><dd className="text-right text-ink-secondary">{shortHex(envelope.intent.paycardId, 6, 4)}</dd>
           </dl>
@@ -194,6 +201,7 @@ function IssueCard() {
   const publicClient = usePublicClient();
 
   const [mode, setMode] = useState<"railscard_bearer" | "railscard_recipient_bound">("railscard_bearer");
+  const [payType, setPayType] = useState<"streaming" | "onetime">("streaming");
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [velAmt, setVelAmt] = useState("");
@@ -209,16 +217,19 @@ function IssueCard() {
     setErr(null);
     if (!address || !config) return setErr("Connect a wallet first.");
     if (mode === "railscard_recipient_bound" && !addrRe.test(recipient.trim())) return setErr("Enter a valid recipient for a recipient-bound card.");
+    const isOneTime = payType === "onetime";
     const amt = parseFloat(amount), vel = parseFloat(velAmt), life = parseFloat(lifeAmt);
-    if (!(amt > 0) || !(vel > 0) || !(life > 0)) return setErr("Enter amount, velocity and lifespan (> 0).");
+    if (!(amt > 0)) return setErr("Enter an amount (> 0).");
+    if (!isOneTime && (!(vel > 0) || !(life > 0))) return setErr("Enter velocity and lifespan (> 0), or switch to One-time.");
 
     const hub = config.clearinghouseAddress as `0x${string}`;
     const usdc = config.usdcAddress as `0x${string}`;
     const payer = address;
     const recv = (mode === "railscard_bearer" ? ZERO_ADDRESS : recipient.trim()) as `0x${string}`;
+    // One-time (instant): lifespanSeconds = 0 unlocks the full amount on first settle; velocity 0.
     const totalAllocationPool = BigInt(Math.round(amt * 1_000_000));
-    const flowVelocityPerSecond = velocityToBasePerSec(vel, velUnit);
-    const lifespanSeconds = lifespanToSeconds(life, lifeUnit);
+    const flowVelocityPerSecond = isOneTime ? 0n : velocityToBasePerSec(vel, velUnit);
+    const lifespanSeconds = isOneTime ? 0n : lifespanToSeconds(life, lifeUnit);
     const genesisTimestamp = BigInt(Math.floor(Date.now() / 1000));
 
     const metadata: CanonicalMetadataV1 = {
@@ -294,22 +305,35 @@ function IssueCard() {
               </button>
             ))}
           </div>
+          <div className="flex gap-2">
+            {(["streaming", "onetime"] as const).map((pt) => (
+              <button key={pt} onClick={() => setPayType(pt)} className={`flex-1 rounded-lg px-2 py-2 font-mono text-[11px] transition ${payType === pt ? "bg-emerald-core/20 text-emerald-core ring-1 ring-emerald-core/40" : "bg-white/5 text-ink-faint hover:text-ink-secondary"}`}>
+                {pt === "streaming" ? "Streaming" : "One-time"}
+              </button>
+            ))}
+          </div>
           {mode === "railscard_recipient_bound" && (
             <input className={inputCls} value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder="Recipient 0x… (only they can claim)" />
           )}
           <input className={inputCls} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Value (USDC) e.g. 5.00" inputMode="decimal" />
-          <div className="flex gap-2">
-            <input className={`${inputCls} flex-1`} value={velAmt} onChange={(e) => setVelAmt(e.target.value)} placeholder="Velocity e.g. 1.00" inputMode="decimal" />
-            <select className={inputCls + " w-auto"} value={velUnit} onChange={(e) => setVelUnit(e.target.value as VelocityUnit)}>
-              <option value="sec">/sec</option><option value="min">/min</option><option value="hr">/hr</option><option value="day">/day</option>
-            </select>
-          </div>
-          <div className="flex gap-2">
-            <input className={`${inputCls} flex-1`} value={lifeAmt} onChange={(e) => setLifeAmt(e.target.value)} placeholder="Lifespan e.g. 10" inputMode="decimal" />
-            <select className={inputCls + " w-auto"} value={lifeUnit} onChange={(e) => setLifeUnit(e.target.value as LifespanUnit)}>
-              <option value="sec">sec</option><option value="min">min</option><option value="hr">hr</option><option value="day">day</option>
-            </select>
-          </div>
+          {payType === "streaming" ? (
+            <>
+              <div className="flex gap-2">
+                <input className={`${inputCls} flex-1`} value={velAmt} onChange={(e) => setVelAmt(e.target.value)} placeholder="Velocity e.g. 1.00" inputMode="decimal" />
+                <select className={inputCls + " w-auto"} value={velUnit} onChange={(e) => setVelUnit(e.target.value as VelocityUnit)}>
+                  <option value="sec">/sec</option><option value="min">/min</option><option value="hr">/hr</option><option value="day">/day</option>
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <input className={`${inputCls} flex-1`} value={lifeAmt} onChange={(e) => setLifeAmt(e.target.value)} placeholder="Lifespan e.g. 10" inputMode="decimal" />
+                <select className={inputCls + " w-auto"} value={lifeUnit} onChange={(e) => setLifeUnit(e.target.value as LifespanUnit)}>
+                  <option value="sec">sec</option><option value="min">min</option><option value="hr">hr</option><option value="day">day</option>
+                </select>
+              </div>
+            </>
+          ) : (
+            <p className="font-mono text-[10px] text-ink-faint">One-time · the holder claims the full value at once (instant, no drip).</p>
+          )}
           {err && <p className="font-mono text-[11px] text-amber-400/90">{err}</p>}
           <button onClick={issue} disabled={busy} className="mt-1 rounded-xl bg-emerald-core px-4 py-2.5 font-mono text-sm font-semibold text-[#04070D] transition hover:brightness-110 disabled:opacity-50">
             {step === "approving" ? "Approving USDC…" : step === "signing" ? "Sign in wallet…" : "Sign & create link"}
@@ -379,6 +403,7 @@ function Received() {
               <div key={s.paycardId} className="glass-soft flex items-center justify-between gap-3 p-3 font-mono text-[11px]">
                 <span className="flex items-center gap-2">
                   <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold ${active ? "border-emerald-core/30 bg-emerald-core/15 text-emerald-core" : "border-red-800/40 bg-red-950/40 text-red-400"}`}>{active ? "ACTIVE" : "CLOSED"}</span>
+                  <span className="rounded border border-white/10 px-1.5 py-0.5 text-[9px] text-ink-faint">{s.lifespanSeconds === 0 ? "one-time" : "streaming"}</span>
                   <span className="text-ink-secondary">{shortHex(s.paycardId, 8, 6)}</span>
                   <span className="text-ink-faint">from {shortHex(s.payer, 6, 4)}</span>
                 </span>

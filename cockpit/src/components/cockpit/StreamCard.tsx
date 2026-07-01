@@ -171,6 +171,9 @@ export function StreamCard({
           >
             {isActive ? "ACTIVE" : "CLOSED"}
           </span>
+          <span className="shrink-0 inline-flex items-center rounded border border-white/10 px-1.5 py-0.5 font-mono text-[9px] text-ink-faint">
+            {stream.lifespanSeconds === 0 ? "one-time" : "streaming"}
+          </span>
           <span className="font-mono text-[11px] text-ink-secondary truncate" title={stream.paycardId}>
             {shortHex(stream.paycardId, 10, 6)}
           </span>
