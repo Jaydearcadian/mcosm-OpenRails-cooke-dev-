@@ -21,7 +21,9 @@ import {
   hashOpenRailsMetadata,
   buildMetadataBoundPaycardId,
   deserializeEnvelope,
+  serializeEnvelope,
 } from "./intents";
+import { signFlowPermit } from "./permit";
 import type { OpenRailsLinkArtifact, RailsCardLinkPayload, RailsFlowLinkPayload } from "./links";
 
 // Public gasless claim relay (the funded keeper worker). Override per-deploy if needed.
@@ -211,11 +213,120 @@ export function useRailsActions() {
     }
   }
 
+  /**
+   * Pay a RailsFlow request gaslessly: the connected wallet signs the intent AND an EIP-2612
+   * permit (no approval tx, no open tx), and the keeper relay lands both. On Arc gas == USDC, so
+   * the payer isn't "gasless" in the asset sense — the win is no approval tx and the keeper pays
+   * gas; the payer still funds the escrow per the signed intent.
+   */
+  async function payRailsFlowSponsored(artifact: OpenRailsLinkArtifact): Promise<void> {
+    if (!config) return setStatus({ id: "error", msg: "Config not loaded." });
+    if (!address) return setStatus({ id: "error", msg: "Connect a wallet first." });
+    const pl = artifact.payload as RailsFlowLinkPayload;
+    if (pl.expiresAt && Date.now() / 1000 > pl.expiresAt) {
+      return setStatus({ id: "error", msg: "This request link has expired." });
+    }
+    try {
+      const hub = config.clearinghouseAddress as `0x${string}`;
+      const usdc = config.usdcAddress as `0x${string}`;
+      const payer = address as `0x${string}`;
+      const recipient = pl.recipient as `0x${string}`;
+      const totalAllocationPool = BigInt(pl.amount);
+      const flowVelocityPerSecond = BigInt(pl.flowVelocityPerSecond);
+      const lifespanSeconds = BigInt(pl.lifespanSeconds);
+      const genesisTimestamp = BigInt(Math.floor(Date.now() / 1000));
+
+      const metadata: CanonicalMetadataV1 = {
+        version: "openrails-metadata-v1",
+        mode: "railsflow",
+        originator: payer,
+        recipient,
+        token: usdc,
+        amount: totalAllocationPool.toString(),
+        flowVelocityPerSecond: flowVelocityPerSecond.toString(),
+        lifespanSeconds: Number(lifespanSeconds),
+        ...(pl.workflowId ? { workflowId: pl.workflowId } : {}),
+        ...(pl.metadataRef ? { metadataRef: pl.metadataRef } : {}),
+      };
+      const metadataHash = hashOpenRailsMetadata(metadata);
+
+      const { nonce } = await api.nonce(payer, 0);
+      const nonceValue = BigInt(nonce);
+      const paycardId = buildMetadataBoundPaycardId({ payer, nonceChannel: 0n, nonceValue, metadataHash });
+
+      setStatus({ id: "signing" });
+      const domain = buildOpenRailsDomain(chainId ?? arcTestnet.id, hub);
+      const message = {
+        paycardId,
+        metadataHash,
+        recipient,
+        totalAllocationPool,
+        flowVelocityPerSecond,
+        genesisTimestamp,
+        lifespanSeconds,
+        residualDeltaRecipient: payer,
+        nonceChannel: 0n,
+        nonceValue,
+      } as const;
+      const sig = await signTypedDataAsync({
+        domain,
+        types: OPENRAILS_EIP712_TYPES,
+        primaryType: "SettlementIntent",
+        message,
+      });
+
+      // Serialize the signed envelope (types match the relay's decoder: pool/velocity as strings,
+      // timestamps/nonces as numbers).
+      const envelope: CryptographicEnvelopeV1 = {
+        payerAddress: payer,
+        envelopeSignature: sig,
+        intent: {
+          paycardId,
+          metadataHash,
+          recipient,
+          totalAllocationPool: totalAllocationPool.toString(),
+          flowVelocityPerSecond: flowVelocityPerSecond.toString(),
+          genesisTimestamp: Number(genesisTimestamp),
+          lifespanSeconds: Number(lifespanSeconds),
+          residualDeltaRecipient: payer,
+          nonceChannel: 0,
+          nonceValue: Number(nonceValue),
+        },
+        mode: "railsflow",
+        metadata,
+      };
+      const envelopeToken = serializeEnvelope(envelope);
+
+      // Gasless approval via permit — replaces the ERC-20 approve tx.
+      const permit = await signFlowPermit({
+        publicClient: publicClient!,
+        signTypedDataAsync,
+        owner: payer,
+        token: usdc,
+        spender: hub,
+        value: totalAllocationPool,
+        chainId: chainId ?? arcTestnet.id,
+      });
+
+      setStatus({ id: "submitting" });
+      const res = await fetch(`${RELAY_URL}/relay-open`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ envelopeToken, permit }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setStatus({ id: "success", txHash: data.txHash, paycardId: data.paycardId ?? paycardId });
+    } catch (e) {
+      setStatus({ id: "error", msg: e instanceof Error ? e.message.slice(0, 220) : String(e) });
+    }
+  }
+
   /** Dispatch by link kind: RailsCard → claim, RailsFlow → pay. */
   async function act(artifact: OpenRailsLinkArtifact): Promise<void> {
     if (artifact.kind === "railscard") return claimRailsCard(artifact);
     return payRailsFlow(artifact);
   }
 
-  return { config, conn, address, status, busy, act, claimRailsCard, claimRailsCardSponsored, payRailsFlow, reset };
+  return { config, conn, address, status, busy, act, claimRailsCard, claimRailsCardSponsored, payRailsFlow, payRailsFlowSponsored, reset };
 }

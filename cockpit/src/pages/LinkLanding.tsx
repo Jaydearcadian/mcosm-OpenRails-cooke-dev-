@@ -79,13 +79,13 @@ function buildTerms(a: OpenRailsLinkArtifact): Terms {
     instant: pl.lifespanSeconds === 0,
     counterpartyLabel: "Recipient",
     counterparty: pl.recipient,
-    note: "You are the payer. USDC escrow comes from your connected wallet, goes to the recipient, and unspent residual returns to you.",
+    note: "You are the payer. You sign the intent + a permit (no approval tx) and the keeper opens it and pays gas. USDC escrow still comes from your wallet, goes to the recipient, and unspent residual returns to you. Prefer to submit it yourself? Use self-submit below.",
   };
 }
 
 export default function LinkLanding() {
   const { isConnected } = useAccount();
-  const { config, status, busy, act, claimRailsCard, claimRailsCardSponsored, reset } = useRailsActions();
+  const { config, status, busy, act, claimRailsCard, claimRailsCardSponsored, payRailsFlowSponsored, reset } = useRailsActions();
 
   const parsed = useMemo(() => {
     try {
@@ -179,7 +179,7 @@ export default function LinkLanding() {
                     onClick={() =>
                       parsed.terms!.kind === "railscard"
                         ? claimRailsCardSponsored(parsed.artifact!)
-                        : act(parsed.artifact!)
+                        : payRailsFlowSponsored(parsed.artifact!)
                     }
                     disabled={busy || !config}
                     className="w-full rounded-xl bg-emerald-core px-4 py-3 font-mono text-sm font-semibold text-[#04070D] transition hover:brightness-110 disabled:opacity-50"
@@ -192,11 +192,15 @@ export default function LinkLanding() {
                       ? "Submitting to Arc…"
                       : parsed.terms.kind === "railscard"
                       ? "Claim · gas sponsored"
-                      : parsed.terms.action}
+                      : "Pay · gas sponsored"}
                   </button>
-                  {parsed.terms.kind === "railscard" && !busy && (
+                  {!busy && (
                     <button
-                      onClick={() => claimRailsCard(parsed.artifact!)}
+                      onClick={() =>
+                        parsed.terms!.kind === "railscard"
+                          ? claimRailsCard(parsed.artifact!)
+                          : act(parsed.artifact!)
+                      }
                       disabled={!config}
                       className="mt-2 w-full font-mono text-[11px] text-ink-faint underline decoration-white/20 underline-offset-2 transition hover:text-ink-secondary disabled:opacity-50"
                     >

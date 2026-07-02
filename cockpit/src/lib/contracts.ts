@@ -149,4 +149,26 @@ export const USDC_ABI = [
     inputs: [],
     outputs: [{ name: "", type: "uint8" }],
   },
+  // EIP-2612 permit reads (Arc USDC supports permit) — used for gasless approvals.
+  {
+    type: "function",
+    name: "nonces",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "name",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+  },
+  {
+    type: "function",
+    name: "version",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+  },
 ] as const;
