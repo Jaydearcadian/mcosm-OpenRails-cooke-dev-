@@ -1,0 +1,39 @@
+{
+  "name": "openrails-mcp",
+  "version": "0.1.0",
+  "description": "OpenRails MCP server — let agents transact on the Arc USDC rail (pay a link, issue a RailsCard, read paycard state) over stdio, gasless by default.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "openrails-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "openrails",
+    "mcp",
+    "model-context-protocol",
+    "arc",
+    "usdc",
+    "agent-payments"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "ethers": "^6.13.0",
+    "openrails-sdk": "file:../sdk",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "@types/node": "^20.12.12"
+  }
+}
