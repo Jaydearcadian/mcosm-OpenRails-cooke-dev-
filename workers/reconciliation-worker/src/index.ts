@@ -5,6 +5,7 @@ export interface Env {
   ARC_RPC_URL: string;
   ARC_CHAIN_ID: string;
   OPENRAILS_HUB_ADDRESS: string;
+  ARC_USDC_ADDRESS?: string; // USDC token (for the optional EIP-2612 permit in /relay-open)
   RECONCILIATION_SIGNER_KEY?: string; // Private key secret loaded from Wrangler
   RECONCILIATION_ADMIN_TOKEN?: string;
   RECONCILIATION_BATCH_LIMIT?: string;
@@ -21,6 +22,10 @@ const HUB_ABI = [
   "function claimWildcardPaycardChannel(bytes32 paycardId, bytes32 metadataHash, address claimRecipient, uint256 totalAllocationPool, uint256 flowVelocityPerSecond, uint256 genesisTimestamp, uint256 lifespanSeconds, address residualDeltaRecipient, bytes envelopeSignature, uint256 nonceChannel, uint256 nonceValue) external",
   "function registry(bytes32 paycardId) external view returns (address payer, address recipient, bytes32 metadataHash, uint256 totalAllocationPool, uint256 availableBalance, uint256 flowVelocityPerSecond, uint256 genesisTimestamp, uint256 lifespanSeconds, uint256 lastCheckpointEpoch, address residualDeltaRecipient, uint8 operationalStatus)",
   "event PaycardProvisioned(bytes32 indexed paycardId, address indexed payer, address indexed recipient, bytes32 metadataHash, uint256 poolAllocation, uint256 flowVelocityPerSecond, uint256 genesisTimestamp, uint256 lifespanSeconds)"
+];
+
+const USDC_PERMIT_ABI = [
+  "function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external"
 ];
 
 // Envelope shape minted by the SDK / cockpit (base64url-JSON of a CryptographicEnvelopeV1).
@@ -97,6 +102,13 @@ export default {
       if (url.pathname === "/relay-claim") {
         if (request.method !== "POST") return jsonResponse({ error: "Only POST requests allowed" }, 405);
         return this.relayClaim(request, env);
+      }
+
+      // Public, gasless RailsFlow/stream open: the payer signs the intent (and optionally an
+      // EIP-2612 permit so they never send an approval tx); the keeper submits both and pays gas.
+      if (url.pathname === "/relay-open") {
+        if (request.method !== "POST") return jsonResponse({ error: "Only POST requests allowed" }, 405);
+        return this.relayOpen(request, env);
       }
 
       // Admin-gated manual settle trigger (the cron drives this automatically otherwise).
@@ -193,6 +205,94 @@ export default {
       return jsonResponse({ txHash: tx.hash, paycardId: i.paycardId, recipient: claimRecipient, mode: env0.mode });
     } catch (error) {
       return jsonResponse({ error: (error as Error).message?.slice(0, 300) || "relay submit failed" }, 502);
+    }
+  },
+
+  // Sponsor a RailsFlow/stream open: the payer-signed envelope opens the channel; an optional
+  // EIP-2612 permit lands the USDC approval first, so the payer sends no tx at all. Escrow is
+  // pulled from the recovered payer per the signed intent — non-custodial; the keeper pays gas.
+  async relayOpen(request: Request, env: Env): Promise<Response> {
+    if ((env.RELAY_CLAIMS_ENABLED ?? "true").toLowerCase() === "false") {
+      return jsonResponse({ error: "Claim relay is disabled" }, 503);
+    }
+    if (!env.RECONCILIATION_SIGNER_KEY) {
+      return jsonResponse({ error: "Relay signer is not configured" }, 503);
+    }
+
+    type Permit = { owner: string; spender: string; value: string; deadline: number; v: number; r: string; s: string };
+    let body: { envelopeToken?: string; permit?: Permit };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400);
+    }
+    if (!body.envelopeToken) return jsonResponse({ error: "Missing envelopeToken" }, 400);
+
+    let env0: ClaimEnvelope;
+    try {
+      env0 = decodeEnvelope(body.envelopeToken);
+    } catch {
+      return jsonResponse({ error: "Could not decode envelopeToken" }, 400);
+    }
+    const i = env0.intent;
+    if (!i?.paycardId || !env0.envelopeSignature) {
+      return jsonResponse({ error: "Envelope is missing an intent or signature" }, 400);
+    }
+    if (/^0x0{40}$/i.test(i.recipient)) {
+      return jsonResponse({ error: "relay-open needs a fixed recipient; use /relay-claim for bearer cards" }, 400);
+    }
+
+    const provider = new ethers.JsonRpcProvider(env.ARC_RPC_URL);
+    const signer = new ethers.Wallet(env.RECONCILIATION_SIGNER_KEY, provider);
+    const hub = new ethers.Contract(env.OPENRAILS_HUB_ADDRESS, HUB_ABI, signer);
+
+    // Optional: land the payer's approval via permit (gasless for them) before opening.
+    if (body.permit) {
+      if (!env.ARC_USDC_ADDRESS) return jsonResponse({ error: "USDC address not configured for permit" }, 503);
+      const p = body.permit;
+      const usdc = new ethers.Contract(env.ARC_USDC_ADDRESS, USDC_PERMIT_ABI, signer);
+      try {
+        await usdc.permit.staticCall(p.owner, p.spender, BigInt(p.value), BigInt(p.deadline), p.v, p.r, p.s);
+      } catch (error) {
+        return jsonResponse({ error: `Permit not valid: ${(error as Error).message?.slice(0, 240)}` }, 409);
+      }
+      try {
+        const ptx = await usdc.permit(p.owner, p.spender, BigInt(p.value), BigInt(p.deadline), p.v, p.r, p.s);
+        await ptx.wait();
+        console.log(`[relay] permit landed for ${p.owner} (${ptx.hash})`);
+      } catch (error) {
+        return jsonResponse({ error: (error as Error).message?.slice(0, 300) || "permit submit failed" }, 502);
+      }
+    }
+
+    const args = [
+      i.paycardId,
+      i.metadataHash,
+      i.recipient,
+      BigInt(i.totalAllocationPool),
+      BigInt(i.flowVelocityPerSecond),
+      BigInt(i.genesisTimestamp),
+      BigInt(i.lifespanSeconds),
+      i.residualDeltaRecipient,
+      env0.envelopeSignature,
+      BigInt(i.nonceChannel),
+      BigInt(i.nonceValue),
+    ];
+
+    try {
+      await hub.openPaycardChannel.staticCall(...args);
+    } catch (error) {
+      const msg = (error as Error).message?.slice(0, 300) || "open would revert";
+      return jsonResponse({ error: `Open not currently valid: ${msg}` }, 409);
+    }
+
+    try {
+      const tx = await hub.openPaycardChannel(...args);
+      await tx.wait();
+      console.log(`[relay] sponsored open ${i.paycardId} -> ${i.recipient} (${tx.hash})`);
+      return jsonResponse({ txHash: tx.hash, paycardId: i.paycardId, recipient: i.recipient, mode: env0.mode });
+    } catch (error) {
+      return jsonResponse({ error: (error as Error).message?.slice(0, 300) || "relay open failed" }, 502);
     }
   },
 
