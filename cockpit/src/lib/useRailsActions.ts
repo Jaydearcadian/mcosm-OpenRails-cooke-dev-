@@ -24,6 +24,11 @@ import {
 } from "./intents";
 import type { OpenRailsLinkArtifact, RailsCardLinkPayload, RailsFlowLinkPayload } from "./links";
 
+// Public gasless claim relay (the funded keeper worker). Override per-deploy if needed.
+const RELAY_URL =
+  (import.meta.env.VITE_OPENRAILS_RELAY_URL as string | undefined) ??
+  "https://openrails-reconciliation-worker.microcosm.workers.dev";
+
 export type RailsActionStatus =
   | { id: "idle" }
   | { id: "approving" }
@@ -79,6 +84,30 @@ export function useRailsActions() {
           : await writeContractAsync({ address: hub, abi: HUB_ABI, functionName: "openPaycardChannel", args });
       await publicClient!.waitForTransactionReceipt({ hash: txHash, timeout: 120_000 });
       setStatus({ id: "success", txHash, paycardId: i.paycardId });
+    } catch (e) {
+      setStatus({ id: "error", msg: e instanceof Error ? e.message.slice(0, 220) : String(e) });
+    }
+  }
+
+  /**
+   * Claim a RailsCard gaslessly: the funded keeper submits the claim on the claimer's behalf.
+   * The claimer pays no gas; escrow still flows payer → claimer per the signed intent. For a
+   * bearer card the connected wallet is the destination; for a recipient-bound card the relay
+   * ignores it and honors the signed recipient.
+   */
+  async function claimRailsCardSponsored(artifact: OpenRailsLinkArtifact): Promise<void> {
+    if (!address) return setStatus({ id: "error", msg: "Connect a wallet first." });
+    const pl = artifact.payload as RailsCardLinkPayload;
+    try {
+      setStatus({ id: "submitting" });
+      const res = await fetch(`${RELAY_URL}/relay-claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ envelopeToken: pl.envelopeToken, claimRecipient: address }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setStatus({ id: "success", txHash: data.txHash, paycardId: data.paycardId });
     } catch (e) {
       setStatus({ id: "error", msg: e instanceof Error ? e.message.slice(0, 220) : String(e) });
     }
@@ -188,5 +217,5 @@ export function useRailsActions() {
     return payRailsFlow(artifact);
   }
 
-  return { config, conn, address, status, busy, act, claimRailsCard, payRailsFlow, reset };
+  return { config, conn, address, status, busy, act, claimRailsCard, claimRailsCardSponsored, payRailsFlow, reset };
 }

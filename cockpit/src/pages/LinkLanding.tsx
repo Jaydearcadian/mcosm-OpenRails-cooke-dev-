@@ -64,8 +64,8 @@ function buildTerms(a: OpenRailsLinkArtifact): Terms {
       counterparty: env.payerAddress,
       note:
         pl.mode === "railscard_bearer"
-          ? "The value opens to your connected wallet. Escrow is pulled from the payer (they already signed) — you only pay gas."
-          : "This card is recipient-bound. Escrow is pulled from the payer — you only pay gas.",
+          ? "The value opens to your connected wallet. Escrow is pulled from the payer (they already signed) and gas is sponsored by the keeper — you pay nothing. Prefer to pay your own gas? Use self-submit below."
+          : "This card is recipient-bound. Escrow is pulled from the payer and gas is sponsored by the keeper — you pay nothing. Prefer to pay your own gas? Use self-submit below.",
     };
   }
   const pl = a.payload as RailsFlowLinkPayload;
@@ -85,7 +85,7 @@ function buildTerms(a: OpenRailsLinkArtifact): Terms {
 
 export default function LinkLanding() {
   const { isConnected } = useAccount();
-  const { config, status, busy, act, reset } = useRailsActions();
+  const { config, status, busy, act, claimRailsCard, claimRailsCardSponsored, reset } = useRailsActions();
 
   const parsed = useMemo(() => {
     try {
@@ -176,7 +176,11 @@ export default function LinkLanding() {
               ) : (
                 <>
                   <button
-                    onClick={() => act(parsed.artifact!)}
+                    onClick={() =>
+                      parsed.terms!.kind === "railscard"
+                        ? claimRailsCardSponsored(parsed.artifact!)
+                        : act(parsed.artifact!)
+                    }
                     disabled={busy || !config}
                     className="w-full rounded-xl bg-emerald-core px-4 py-3 font-mono text-sm font-semibold text-[#04070D] transition hover:brightness-110 disabled:opacity-50"
                   >
@@ -186,8 +190,19 @@ export default function LinkLanding() {
                       ? "Sign in your wallet…"
                       : status.id === "submitting"
                       ? "Submitting to Arc…"
+                      : parsed.terms.kind === "railscard"
+                      ? "Claim · gas sponsored"
                       : parsed.terms.action}
                   </button>
+                  {parsed.terms.kind === "railscard" && !busy && (
+                    <button
+                      onClick={() => claimRailsCard(parsed.artifact!)}
+                      disabled={!config}
+                      className="mt-2 w-full font-mono text-[11px] text-ink-faint underline decoration-white/20 underline-offset-2 transition hover:text-ink-secondary disabled:opacity-50"
+                    >
+                      or self-submit (you pay gas)
+                    </button>
+                  )}
                   {status.id === "error" && (
                     <p className="mt-2 break-words font-mono text-[11px] text-amber-400/90">
                       {status.msg}{" "}

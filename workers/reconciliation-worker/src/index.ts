@@ -12,18 +12,56 @@ export interface Env {
   SETTLER_MODE?: string; // "chain" (default) — settle all active rails; or "d1" — legacy plays table
   SETTLER_WINDOW_BLOCKS?: string; // getLogs lookback (default 9000; public RPC caps ~10k)
   MIN_ACCRUED_USDC?: string; // skip streaming settles below this accrued amount (default 0.0005)
+  RELAY_CLAIMS_ENABLED?: string; // "true" (default) exposes the public gasless RailsCard claim relay
 }
 
 const HUB_ABI = [
   "function processDripSettle(bytes32 paycardId) external",
+  "function openPaycardChannel(bytes32 paycardId, bytes32 metadataHash, address recipient, uint256 totalAllocationPool, uint256 flowVelocityPerSecond, uint256 genesisTimestamp, uint256 lifespanSeconds, address residualDeltaRecipient, bytes envelopeSignature, uint256 nonceChannel, uint256 nonceValue) external",
+  "function claimWildcardPaycardChannel(bytes32 paycardId, bytes32 metadataHash, address claimRecipient, uint256 totalAllocationPool, uint256 flowVelocityPerSecond, uint256 genesisTimestamp, uint256 lifespanSeconds, address residualDeltaRecipient, bytes envelopeSignature, uint256 nonceChannel, uint256 nonceValue) external",
   "function registry(bytes32 paycardId) external view returns (address payer, address recipient, bytes32 metadataHash, uint256 totalAllocationPool, uint256 availableBalance, uint256 flowVelocityPerSecond, uint256 genesisTimestamp, uint256 lifespanSeconds, uint256 lastCheckpointEpoch, address residualDeltaRecipient, uint8 operationalStatus)",
   "event PaycardProvisioned(bytes32 indexed paycardId, address indexed payer, address indexed recipient, bytes32 metadataHash, uint256 poolAllocation, uint256 flowVelocityPerSecond, uint256 genesisTimestamp, uint256 lifespanSeconds)"
 ];
 
+// Envelope shape minted by the SDK / cockpit (base64url-JSON of a CryptographicEnvelopeV1).
+interface ClaimEnvelope {
+  payerAddress: string;
+  envelopeSignature: string;
+  intent: {
+    paycardId: string;
+    metadataHash: string;
+    recipient: string;
+    totalAllocationPool: string;
+    flowVelocityPerSecond: string;
+    genesisTimestamp: number;
+    lifespanSeconds: number;
+    residualDeltaRecipient: string;
+    nonceChannel: number;
+    nonceValue: number;
+  };
+  mode: string; // railscard_bearer | railscard_recipient_bound | ...
+}
+
+// Inverse of the cockpit/SDK serializeEnvelope (TextEncoder bytes → base64url).
+function decodeEnvelope(token: string): ClaimEnvelope {
+  let b64 = token.replace(/-/g, "+").replace(/_/g, "/");
+  b64 += "=".repeat((4 - (b64.length % 4)) % 4);
+  const bin = atob(b64);
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  const json = new TextDecoder().decode(bytes);
+  return JSON.parse(json) as ClaimEnvelope;
+}
+
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-OpenRails-Admin-Token",
+};
+
 function jsonResponse(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
 }
 
@@ -45,27 +83,116 @@ export default {
     ctx.waitUntil(this.reconcileStreams(env));
   },
 
-  // Also expose as an authenticated POST request for manual testing/debugging.
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       const url = new URL(request.url);
-      if (url.pathname !== "/reconcile") {
-        return jsonResponse({ error: "Not Found" }, 404);
-      }
-      if (request.method !== "POST") {
-        return jsonResponse({ error: "Only POST requests allowed" }, 405);
-      }
-      if (!env.RECONCILIATION_ADMIN_TOKEN) {
-        return jsonResponse({ error: "Reconciliation admin token is not configured" }, 503);
-      }
-      if (!authorized(request, env.RECONCILIATION_ADMIN_TOKEN)) {
-        return jsonResponse({ error: "Unauthorized" }, 401);
+      if (request.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: CORS_HEADERS });
       }
 
-      await this.reconcileStreams(env);
-      return jsonResponse({ success: true, message: "Reconciliation triggered successfully" });
+      // Public, gasless RailsCard claim relay: the keeper submits the claim on behalf of the
+      // holder so a recipient with zero gas can still claim. Non-custodial — escrow is pulled
+      // from the payer (who already signed); the keeper only pays gas and cannot redirect funds
+      // beyond what the signed intent + claimant address allow.
+      if (url.pathname === "/relay-claim") {
+        if (request.method !== "POST") return jsonResponse({ error: "Only POST requests allowed" }, 405);
+        return this.relayClaim(request, env);
+      }
+
+      // Admin-gated manual settle trigger (the cron drives this automatically otherwise).
+      if (url.pathname === "/reconcile") {
+        if (request.method !== "POST") {
+          return jsonResponse({ error: "Only POST requests allowed" }, 405);
+        }
+        if (!env.RECONCILIATION_ADMIN_TOKEN) {
+          return jsonResponse({ error: "Reconciliation admin token is not configured" }, 503);
+        }
+        if (!authorized(request, env.RECONCILIATION_ADMIN_TOKEN)) {
+          return jsonResponse({ error: "Unauthorized" }, 401);
+        }
+        await this.reconcileStreams(env);
+        return jsonResponse({ success: true, message: "Reconciliation triggered successfully" });
+      }
+
+      return jsonResponse({ error: "Not Found" }, 404);
     } catch (err) {
       return jsonResponse({ error: (err as Error).message }, 500);
+    }
+  },
+
+  // Sponsor a RailsCard claim: decode the signed envelope, verify it would succeed (staticCall so
+  // the keeper never burns gas on an already-claimed/expired card), then submit as msg.sender.
+  async relayClaim(request: Request, env: Env): Promise<Response> {
+    if ((env.RELAY_CLAIMS_ENABLED ?? "true").toLowerCase() === "false") {
+      return jsonResponse({ error: "Claim relay is disabled" }, 503);
+    }
+    if (!env.RECONCILIATION_SIGNER_KEY) {
+      return jsonResponse({ error: "Relay signer is not configured" }, 503);
+    }
+
+    let body: { envelopeToken?: string; claimRecipient?: string };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400);
+    }
+    if (!body.envelopeToken) return jsonResponse({ error: "Missing envelopeToken" }, 400);
+
+    let env0: ClaimEnvelope;
+    try {
+      env0 = decodeEnvelope(body.envelopeToken);
+    } catch {
+      return jsonResponse({ error: "Could not decode envelopeToken" }, 400);
+    }
+    const i = env0.intent;
+    if (!i?.paycardId || !env0.envelopeSignature) {
+      return jsonResponse({ error: "Envelope is missing an intent or signature" }, 400);
+    }
+
+    const bearer = env0.mode === "railscard_bearer" || /^0x0{40}$/i.test(i.recipient);
+    let claimRecipient = bearer ? body.claimRecipient : i.recipient;
+    if (bearer && !claimRecipient) {
+      return jsonResponse({ error: "Bearer card requires a claimRecipient address" }, 400);
+    }
+    if (!ethers.isAddress(claimRecipient as string)) {
+      return jsonResponse({ error: "Invalid claimRecipient address" }, 400);
+    }
+    claimRecipient = ethers.getAddress(claimRecipient as string);
+
+    const provider = new ethers.JsonRpcProvider(env.ARC_RPC_URL);
+    const signer = new ethers.Wallet(env.RECONCILIATION_SIGNER_KEY, provider);
+    const hub = new ethers.Contract(env.OPENRAILS_HUB_ADDRESS, HUB_ABI, signer);
+
+    const fn = bearer ? "claimWildcardPaycardChannel" : "openPaycardChannel";
+    const args = [
+      i.paycardId,
+      i.metadataHash,
+      claimRecipient,
+      BigInt(i.totalAllocationPool),
+      BigInt(i.flowVelocityPerSecond),
+      BigInt(i.genesisTimestamp),
+      BigInt(i.lifespanSeconds),
+      i.residualDeltaRecipient,
+      env0.envelopeSignature,
+      BigInt(i.nonceChannel),
+      BigInt(i.nonceValue),
+    ];
+
+    try {
+      // Precheck: reverts here (already claimed, expired, payer under-funded) cost the keeper nothing.
+      await hub[fn].staticCall(...args);
+    } catch (error) {
+      const msg = (error as Error).message?.slice(0, 300) || "claim would revert";
+      return jsonResponse({ error: `Claim not currently valid: ${msg}` }, 409);
+    }
+
+    try {
+      const tx = await hub[fn](...args);
+      await tx.wait();
+      console.log(`[relay] sponsored ${fn} ${i.paycardId} -> ${claimRecipient} (${tx.hash})`);
+      return jsonResponse({ txHash: tx.hash, paycardId: i.paycardId, recipient: claimRecipient, mode: env0.mode });
+    } catch (error) {
+      return jsonResponse({ error: (error as Error).message?.slice(0, 300) || "relay submit failed" }, 502);
     }
   },
 

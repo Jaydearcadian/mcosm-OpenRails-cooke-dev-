@@ -14,6 +14,9 @@ SETTLER_WINDOW_BLOCKS = "9000"
 MIN_ACCRUED_USDC = "0.0005"
 RECONCILIATION_BATCH_LIMIT = "25"
 MAX_SETTLEMENT_ATTEMPTS = "5"
+# Public gasless RailsCard claim relay (POST /relay-claim). Set "false" to disable. The keeper
+# sponsors gas only; escrow is pulled from the payer per the signed intent (non-custodial).
+RELAY_CLAIMS_ENABLED = "true"
 
 # Secrets (never in this file): set with `wrangler secret put RECONCILIATION_SIGNER_KEY`
 # (funded keeper wallet — pays gas only, non-custodial) and optionally RECONCILIATION_ADMIN_TOKEN
