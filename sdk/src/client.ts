@@ -9,6 +9,7 @@
  */
 
 import { ethers } from 'ethers';
+import type { OpenRailsAccount } from './account';
 import {
   type CanonicalMetadataV1,
   type OpenRailsEnvelopeMode,
@@ -170,7 +171,10 @@ export function inferEnvelopeModeFromIntent(intent: OpenRailsIntentV1): OpenRail
  * ```
  */
 export class LeptonOpenRailsClient {
-  private wallet: ethers.Wallet;
+  /** The signing account. An ethers.Wallet (private-key path) already satisfies this. */
+  private account: OpenRailsAccount;
+  /** Checksummed signer address, resolved once at construction (kept for sync `getAddress`). */
+  private address: string;
   private contractAddress: string;
   private chainId: number;
   private clockSkewBufferSeconds: number;
@@ -191,15 +195,39 @@ export class LeptonOpenRailsClient {
     provider?: ethers.Provider,
     clockSkewBufferSeconds: number = 60,
   ) {
-    this.wallet = new ethers.Wallet(privateKey, provider);
+    const wallet = new ethers.Wallet(privateKey, provider);
+    this.account = wallet;
+    this.address = wallet.address;
     this.contractAddress = contractAddress;
     this.chainId = chainId;
     this.clockSkewBufferSeconds = clockSkewBufferSeconds;
   }
 
+  /**
+   * Construct a client from any {@link OpenRailsAccount} — an embedded wallet
+   * (Privy/Turnkey), a server wallet, or an adapter-wrapped signer. This is the
+   * seam that lets OpenRails onboard users/agents without a raw private key.
+   *
+   * Async because a generic account resolves its address asynchronously.
+   */
+  public static async fromAccount(
+    account: OpenRailsAccount,
+    contractAddress: string,
+    chainId: number,
+    clockSkewBufferSeconds: number = 60,
+  ): Promise<LeptonOpenRailsClient> {
+    const client = Object.create(LeptonOpenRailsClient.prototype) as LeptonOpenRailsClient;
+    client.account = account;
+    client.address = ethers.getAddress(await account.getAddress());
+    client.contractAddress = contractAddress;
+    client.chainId = chainId;
+    client.clockSkewBufferSeconds = clockSkewBufferSeconds;
+    return client;
+  }
+
   /** Returns the checksummed signer address. */
   public getAddress(): string {
-    return this.wallet.address;
+    return this.address;
   }
 
   // -----------------------------------------------------------------------
@@ -257,23 +285,18 @@ export class LeptonOpenRailsClient {
     // ----- Structured value (mirrors type field order) -----
     const value = buildSettlementIntentValue(intent);
 
-    // ----- Sign -----
-    let signature: string;
-    if (typeof (this.wallet as any).signTypedData === 'function') {
-      signature = await (this.wallet as any).signTypedData(domain, types, value);
-    } else {
-      signature = await (this.wallet as any)._signTypedData(domain, types, value);
-    }
+    // ----- Sign (through the pluggable account) -----
+    const signature = await this.account.signTypedData(domain, types, value);
 
     // ----- Signature sanity check -----
     const recoveredSigner = ethers.verifyTypedData(domain, types, value, signature);
-    if (recoveredSigner.toLowerCase() !== this.wallet.address.toLowerCase()) {
-      throw new SignatureVerificationError(this.wallet.address, recoveredSigner);
+    if (recoveredSigner.toLowerCase() !== this.address.toLowerCase()) {
+      throw new SignatureVerificationError(this.address, recoveredSigner);
     }
 
     // ----- Build envelope & serialize -----
     const completePayload: CryptographicEnvelopeV1 = {
-      payerAddress: this.wallet.address,
+      payerAddress: this.address,
       envelopeSignature: signature,
       intent,
       mode,

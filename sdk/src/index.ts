@@ -11,6 +11,9 @@
  */
 
 export * from './client';
+export * from './account';
+export * from './permit';
+export * from './relay';
 export * from './errors';
 export * from './serialization';
 export * from './nonce';

@@ -6,6 +6,13 @@
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./adapters/ethers": { "types": "./dist/adapters/ethers.d.ts", "default": "./dist/adapters/ethers.js" },
+    "./adapters/privy": { "types": "./dist/adapters/privy.d.ts", "default": "./dist/adapters/privy.js" },
+    "./adapters/turnkey": { "types": "./dist/adapters/turnkey.d.ts", "default": "./dist/adapters/turnkey.js" },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "openrails": "dist/cli.js"
   },
@@ -32,6 +39,14 @@
   ],
   "dependencies": {
     "ethers": "^6.13.0"
+  },
+  "peerDependencies": {
+    "@privy-io/react-auth": ">=1",
+    "@turnkey/ethers": ">=1"
+  },
+  "peerDependenciesMeta": {
+    "@privy-io/react-auth": { "optional": true },
+    "@turnkey/ethers": { "optional": true }
   },
   "devDependencies": {
     "typescript": "^5.4.5",
