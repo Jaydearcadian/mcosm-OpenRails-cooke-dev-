@@ -40,6 +40,38 @@ await submitFlushWithSigner(signer, hubAddress, paycardId);    // flushResidualD
 The public surface is re-exported from the package root (`client`, `wallet`, `metadata`,
 `links`, `receipts`, `nonce`, `proof`, `policy`, `access`, …).
 
+## Signer abstraction & gasless
+
+OpenRails authenticates the **signature, not the sender** (the Hub recovers the payer via
+`ecrecover`), so accounts only need to *sign* — submission can be sponsored. The SDK builds on that:
+
+```ts
+import { LeptonOpenRailsClient, payGasless, claimGasless, RelayClient, signUsdcPermit } from "openrails-sdk";
+import { ethersToSubmitter } from "openrails-sdk/adapters/ethers";
+
+// Any OpenRailsAccount works — no raw private key required.
+const account = ethersToSubmitter(anyEthersSigner);              // or privyToAccount / turnkeyToAccount
+const client  = await LeptonOpenRailsClient.fromAccount(account, hubAddress, chainId);
+
+// Gasless: the payer signs an intent (+ an EIP-2612 permit) and a relayer submits it.
+const relay  = new RelayClient({ baseUrl: RELAY_URL });
+const permit = await signUsdcPermit(account, { token: usdc, spender: hubAddress, value, chainId, provider });
+await payGasless({ client, relay, intent, options: { mode: "railsflow", metadata }, permit });
+
+// Claim a RailsCard gaslessly (the payer already signed; the claimer needs no gas).
+await claimGasless({ relay, envelopeToken, claimRecipient });
+```
+
+- **Accounts:** `OpenRailsAccount` (sign-only) / `OpenRailsSubmitter` (also self-submits). An
+  `ethers.Signer` satisfies the latter. The `privateKey` constructor still works unchanged.
+- **Adapters (subpath exports):** `openrails-sdk/adapters/ethers` · `.../adapters/privy` (humans) ·
+  `.../adapters/turnkey` (agents / server wallets). `@privy-io/react-auth` and `@turnkey/ethers` are
+  **optional peers** — the core imports neither, so a plain `import` pulls nothing extra.
+- **Permit:** `signUsdcPermit` produces an EIP-2612 permit so the payer's approval is a signature,
+  not a transaction. Combined with the relay → no gas, no approval tx.
+
+For an agent-facing surface over these, see the companion **`openrails-mcp`** MCP server.
+
 ## CLI
 ```bash
 npx openrails --help

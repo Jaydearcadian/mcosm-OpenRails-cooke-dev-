@@ -48,6 +48,13 @@ Register with an MCP client (e.g. Claude Desktop `mcpServers`):
 
 Smoke test: `OPENRAILS_MCP_SIGNER_KEY=0x... node smoke.mjs [paycardId]`.
 
+## Publishing
+
+`openrails-mcp` depends on `openrails-sdk`. In-repo that dep is `file:../sdk` for local dev/build.
+To publish: (1) publish `openrails-sdk` first, (2) set the dep to the published range —
+`"openrails-sdk": "^0.1.0"` — and `npm install`, (3) `npm run build && npm publish`. Leave the dep
+as `file:../sdk` in the repo afterward.
+
 ## Signer is pluggable
 
 The server builds its signer via the SDK account abstraction (`openrails-sdk`). Dev uses a raw key
