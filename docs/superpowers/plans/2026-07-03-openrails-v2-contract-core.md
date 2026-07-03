@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Solidity `^0.8.26`. The contracts are **deliberately dependency-free / hand-rolled** (Ownable2Step, ReentrancyGuard, SafeERC20 wrappers are all inline; **no OpenZeppelin imports anywhere**). Realize EIP-1271 with a hand-rolled verifier — **do NOT add `@openzeppelin/contracts`**. This matches house style and keeps the audit surface dependency-free; behavior equals OZ `SignatureChecker.isValidSignatureNow`.
+- Solidity `^0.8.26`. Signature verification uses **OpenZeppelin `SignatureChecker.isValidSignatureNow`** (add `@openzeppelin/contracts` v5 as a contracts dependency). Rationale: signature verification is the security-critical path and belongs in the audited library, not hand-rolled — even though the rest of the suite is intentionally dependency-free (Ownable2Step, ReentrancyGuard, SafeERC20 wrappers are inline). This is the only OZ import; keep the rest of the contract's inline primitives as-is.
 - **Do NOT modify** `contracts/ArcOpenRailsHubV1.sol` or `test/foundry/ArcOpenRailsHubV1*.t.sol` — V1 is frozen and left to drain.
 - All V2 contract work lives in `contracts/v2-factory/` (compiled by both Hardhat and Foundry via `foundry.toml` `src = "contracts"`). **Leave the stale duplicate in `experiments/v2-factory/` untouched.**
 - The signed `SettlementIntent` struct and its `ENVELOPE_TYPEHASH` stay **byte-identical to V1** (`payer` is a function argument + verification target, never a signed field).
@@ -33,7 +33,12 @@ Adds the `payer` argument and a hand-rolled signature verifier covering the EOA 
 **Interfaces:**
 - Produces: `openPaycardChannel(bytes32 paycardId, bytes32 metadataHash, address recipient, uint256 totalAllocationPool, uint256 flowVelocityPerSecond, uint256 genesisTimestamp, uint256 lifespanSeconds, address residualDeltaRecipient, bytes envelopeSignature, uint256 nonceChannel, uint256 nonceValue, address payer)` — `payer` appended as the trailing arg.
 - Produces: `claimWildcardPaycardChannel(...same 11..., address payer)` — `payer` appended as the trailing arg.
-- Produces: `internal view _verifySignature(address payer, bytes32 digest, bytes memory signature) returns (bool)`.
+- Produces: signature validation via OZ `SignatureChecker.isValidSignatureNow(payer, digest, sig)` (covers both EOA and EIP-1271 in one call).
+
+- [ ] **Step 0: Add the OpenZeppelin contracts dependency**
+
+Run: `npm install --save-exact @openzeppelin/contracts@5.1.0`
+Expected: `@openzeppelin/contracts` appears in `package.json` dependencies. (v5 requires Solidity `>=0.8.20`, compatible with `^0.8.26`.)
 
 - [ ] **Step 1: Write the failing test** — update the existing EOA test to pass the trailing `payer` arg, and add a payer-mismatch test.
 
@@ -242,43 +247,17 @@ with:
                 params.nonceValue
             ));
             bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash));
-            if (!_verifySignature(payer, digest, params.envelopeSignature)) revert AccessViolation();
+            if (!SignatureChecker.isValidSignatureNow(payer, digest, params.envelopeSignature)) revert AccessViolation();
         }
 ```
 
-(d) Replace the `_recoverSigner` function with `_verifySignature` (EOA path only for now) and add the magic-value constant near the other constants:
+(d) Add the OZ import at the top of the file (below the `pragma`), and delete the now-unused `_recoverSigner` function. `SignatureChecker.isValidSignatureNow` handles **both** the EOA path (via `ECDSA.tryRecover`, which already rejects high-`s`/bad-`v` malleability) **and** the EIP-1271 contract path in a single call, so no hand-rolled verifier or magic-value constant is needed. The existing `_SECP256K1N_HALF` constant becomes unused once `_recoverSigner` is deleted — remove it too.
 
 ```solidity
-    // EIP-1271 magic value == IERC1271.isValidSignature(bytes32,bytes) selector
-    bytes4 private constant _ERC1271_MAGICVALUE = 0x1626ba7e;
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 ```
 
-```solidity
-    function _verifySignature(address payer, bytes32 digest, bytes memory signature)
-        internal
-        view
-        returns (bool)
-    {
-        // EOA path: canonical 65-byte ECDSA with low-s + valid-v malleability guard.
-        if (signature.length == 65) {
-            bytes32 r;
-            bytes32 s;
-            uint8 v;
-            assembly {
-                r := mload(add(signature, 0x20))
-                s := mload(add(signature, 0x40))
-                v := byte(0, mload(add(signature, 0x60)))
-            }
-            if ((v == 27 || v == 28) && uint256(s) <= _SECP256K1N_HALF) {
-                address recovered = ecrecover(digest, v, r, s);
-                if (recovered != address(0) && recovered == payer) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-```
+Delete the entire `_recoverSigner(bytes32 digest, bytes memory signature)` function and the `_SECP256K1N_HALF` constant declaration.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -288,23 +267,22 @@ Expected: PASS — all three tests (clone isolation, EOA open with `payer`, paye
 - [ ] **Step 5: Commit**
 
 ```bash
-git add contracts/v2-factory/ArcOpenRailsHubV2Initializable.sol test/v2-factory.test.ts
-git commit -m "V2 hub: explicit payer param + hand-rolled EOA signature verifier"
+git add contracts/v2-factory/ArcOpenRailsHubV2Initializable.sol test/v2-factory.test.ts package.json package-lock.json
+git commit -m "V2 hub: explicit payer param + OZ SignatureChecker verification"
 ```
 
 ---
 
-### Task 2: EIP-1271 smart-account path + mock 1271 fixture
+### Task 2: EIP-1271 smart-account coverage + mock 1271 fixture
 
-Extends `_verifySignature` with the contract-account branch and proves it with a test-only EIP-1271 wallet.
+`SignatureChecker.isValidSignatureNow` (Task 1) already covers the contract-account path, so this task **proves** it with a test-only EIP-1271 wallet and locks in accept/reject coverage for the audit. No contract logic changes here — the test passes because Task 1's `SignatureChecker` call handles EIP-1271.
 
 **Files:**
 - Create: `contracts/v2-factory/test/MockERC1271Account.sol`
-- Modify: `contracts/v2-factory/ArcOpenRailsHubV2Initializable.sol`
 - Test: `test/v2-factory.test.ts`
 
 **Interfaces:**
-- Consumes: `_verifySignature` (Task 1), the trailing `payer` open arg (Task 1).
+- Consumes: `SignatureChecker.isValidSignatureNow` behavior (Task 1), the trailing `payer` open arg (Task 1).
 - Produces: `MockERC1271Account` with constructor `(address owner)` and `isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)` returning `0x1626ba7e` iff `signature` is a 65-byte ECDSA sig recovering to `owner`, else `0xffffffff`.
 
 - [ ] **Step 1: Write the mock 1271 account fixture**
@@ -431,37 +409,16 @@ contract MockERC1271Account {
   });
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [ ] **Step 3: Run tests to verify the fixture is needed, then passes**
 
 Run: `npx hardhat test test/v2-factory.test.ts`
-Expected: FAIL — the valid 1271 open reverts, because `_verifySignature` has no contract-account branch yet.
+Expected: PASS — the 1271 accept/reject test passes with **no contract-logic change**, because Task 1's `SignatureChecker.isValidSignatureNow` already validates EIP-1271 signatures. (If run before Step 1 created the fixture, it would fail at `getContractFactory("MockERC1271Account")` — the fixture is the only new artifact.)
 
-- [ ] **Step 4: Implement — add the EIP-1271 branch to `_verifySignature`**
-
-In `contracts/v2-factory/ArcOpenRailsHubV2Initializable.sol`, inside `_verifySignature`, insert before the final `return false;`:
-
-```solidity
-        // Smart-account path: EIP-1271. Only if payer is a deployed contract.
-        if (payer.code.length > 0) {
-            (bool ok, bytes memory ret) = payer.staticcall(
-                abi.encodeWithSelector(_ERC1271_MAGICVALUE, digest, signature)
-            );
-            if (ok && ret.length == 32 && bytes4(ret) == _ERC1271_MAGICVALUE) {
-                return true;
-            }
-        }
-```
-
-- [ ] **Step 5: Run tests to verify they pass**
-
-Run: `npx hardhat test test/v2-factory.test.ts`
-Expected: PASS — EOA tests plus the 1271 accept/reject test.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add contracts/v2-factory/ArcOpenRailsHubV2Initializable.sol contracts/v2-factory/test/MockERC1271Account.sol test/v2-factory.test.ts
-git commit -m "V2 hub: EIP-1271 smart-account signature path + mock 1271 fixture"
+git add contracts/v2-factory/test/MockERC1271Account.sol test/v2-factory.test.ts
+git commit -m "V2 hub: prove EIP-1271 smart-account open + mock 1271 fixture"
 ```
 
 ---
@@ -818,6 +775,6 @@ Repointing the clients is a distinct, deploy-address-dependent subsystem and get
 
 ## Self-review notes
 
-- **Spec coverage:** EIP-1271 (Tasks 1–2) ✓; explicit `payer` param (Task 1) ✓; `SignatureChecker`-equivalent behavior via hand-rolled verifier, dependency-free per house style ✓; domain `2.0.0` + replay guard (Task 3) ✓; factory/clone reused as-is + canonical clone deploy (Task 4) ✓; test matrix — EOA back-compat, 1271 accept/reject, payer-mismatch, legacy-domain reject, clone isolation, Foundry conservation, testnet e2e note (Tasks 1–5 + Verification) ✓; `SettlementIntent` byte-identical ✓; WorkflowNFT/session-keys/paymaster excluded ✓; V1 untouched ✓; assumptions (deployed accounts, permit EOA-only) respected — no permit work here ✓.
-- **Type consistency:** `_verifySignature(address,bytes32,bytes) view returns (bool)`, `_ERC1271_MAGICVALUE = 0x1626ba7e`, and the trailing-`payer` open ABI are used identically across Tasks 1–5 and the Foundry test.
+- **Spec coverage:** EIP-1271 (Tasks 1–2) ✓; explicit `payer` param (Task 1) ✓; OZ `SignatureChecker.isValidSignatureNow` on the security-critical path, per the approved spec (Task 1) ✓; domain `2.0.0` + replay guard (Task 3) ✓; factory/clone reused as-is + canonical clone deploy (Task 4) ✓; test matrix — EOA back-compat, 1271 accept/reject, payer-mismatch, legacy-domain reject, clone isolation, Foundry conservation, testnet e2e note (Tasks 1–5 + Verification) ✓; `SettlementIntent` byte-identical ✓; WorkflowNFT/session-keys/paymaster excluded ✓; V1 untouched ✓; assumptions (deployed accounts, permit EOA-only) respected — no permit work here ✓.
+- **Type consistency:** `SignatureChecker.isValidSignatureNow(payer, digest, sig)`, the `MockERC1271Account` magic value `0x1626ba7e`, and the trailing-`payer` open ABI are used identically across Tasks 1–5 and the Foundry test.
 - **No placeholders:** every code/test/command step carries concrete content.
