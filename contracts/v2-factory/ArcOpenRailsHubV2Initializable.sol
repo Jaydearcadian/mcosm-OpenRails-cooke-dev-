@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+
 /**
  * @title OpenRails V2 Initializable Clearinghouse Ledger Prototype
  */
@@ -136,6 +138,7 @@ contract ArcOpenRailsHubV2Initializable {
         bytes envelopeSignature;
         uint256 nonceChannel;
         uint256 nonceValue;
+        address payer;
     }
 
     // Storage variables (not immutable in proxy context)
@@ -150,9 +153,6 @@ contract ArcOpenRailsHubV2Initializable {
     bytes32 private constant ENVELOPE_TYPEHASH = keccak256(
         "SettlementIntent(bytes32 paycardId,bytes32 metadataHash,address recipient,uint256 totalAllocationPool,uint256 flowVelocityPerSecond,uint256 genesisTimestamp,uint256 lifespanSeconds,address residualDeltaRecipient,uint256 nonceChannel,uint256 nonceValue)"
     );
-    uint256 private constant _SECP256K1N_HALF =
-        0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
-
     // Constructor seals master implementation
     constructor() {
         _initialized = true;
@@ -217,7 +217,8 @@ contract ArcOpenRailsHubV2Initializable {
         address residualDeltaRecipient,
         bytes calldata envelopeSignature,
         uint256 nonceChannel,
-        uint256 nonceValue
+        uint256 nonceValue,
+        address payer
     ) external nonReentrant whenNotPaused {
         if (recipient == address(0)) revert InvalidIntent();
         _openPaycardChannel(OpenParams({
@@ -232,7 +233,8 @@ contract ArcOpenRailsHubV2Initializable {
             residualDeltaRecipient: residualDeltaRecipient,
             envelopeSignature: envelopeSignature,
             nonceChannel: nonceChannel,
-            nonceValue: nonceValue
+            nonceValue: nonceValue,
+            payer: payer
         }));
     }
 
@@ -247,7 +249,8 @@ contract ArcOpenRailsHubV2Initializable {
         address residualDeltaRecipient,
         bytes calldata envelopeSignature,
         uint256 nonceChannel,
-        uint256 nonceValue
+        uint256 nonceValue,
+        address payer
     ) external nonReentrant whenNotPaused {
         if (claimRecipient == address(0)) revert InvalidIntent();
         _openPaycardChannel(OpenParams({
@@ -262,7 +265,8 @@ contract ArcOpenRailsHubV2Initializable {
             residualDeltaRecipient: residualDeltaRecipient,
             envelopeSignature: envelopeSignature,
             nonceChannel: nonceChannel,
-            nonceValue: nonceValue
+            nonceValue: nonceValue,
+            payer: payer
         }));
     }
 
@@ -296,8 +300,9 @@ contract ArcOpenRailsHubV2Initializable {
         if (params.totalAllocationPool == 0 || params.residualDeltaRecipient == address(0)) revert InvalidIntent();
         if (params.lifespanSeconds > 0 && params.flowVelocityPerSecond == 0) revert InvalidIntent();
         if (params.lifespanSeconds > 0 && block.timestamp >= params.genesisTimestamp + params.lifespanSeconds) revert TimeWindowClosed();
+        if (params.payer == address(0)) revert InvalidIntent();
 
-        address payer;
+        address payer = params.payer;
         {
             bytes32 structHash = keccak256(abi.encode(
                 ENVELOPE_TYPEHASH,
@@ -313,7 +318,7 @@ contract ArcOpenRailsHubV2Initializable {
                 params.nonceValue
             ));
             bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash));
-            payer = _recoverSigner(digest, params.envelopeSignature);
+            if (!SignatureChecker.isValidSignatureNow(payer, digest, params.envelopeSignature)) revert AccessViolation();
         }
 
         _consumeNonce(payer, params.nonceChannel, params.nonceValue);
@@ -385,18 +390,4 @@ contract ArcOpenRailsHubV2Initializable {
         }
     }
 
-    function _recoverSigner(bytes32 digest, bytes memory signature) internal pure returns (address) {
-        if (signature.length != 65) revert AccessViolation();
-        bytes32 r; bytes32 s; uint8 v;
-        assembly {
-            r := mload(add(signature, 0x20))
-            s := mload(add(signature, 0x40))
-            v := byte(0, mload(add(signature, 0x60)))
-        }
-        if (v != 27 && v != 28) revert AccessViolation();
-        if (uint256(s) > _SECP256K1N_HALF) revert AccessViolation();
-        address recovered = ecrecover(digest, v, r, s);
-        if (recovered == address(0)) revert AccessViolation();
-        return recovered;
-    }
 }

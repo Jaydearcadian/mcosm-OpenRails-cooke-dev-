@@ -168,7 +168,8 @@ describe("ArcOpenRailsFactoryV1 & Minimal Proxy Clones E2E", function () {
         recoveryAddress,
         signature,
         nonceChannel,
-        nonceValue
+        nonceValue,
+        payerAddress            // <-- new trailing arg
       )
     ).to.emit(clone, "PaycardProvisioned");
 
@@ -181,5 +182,70 @@ describe("ArcOpenRailsFactoryV1 & Minimal Proxy Clones E2E", function () {
 
     // Verify token balance is successfully escrowed inside the clone contract address
     expect(await mockUSDC.balanceOf(cloneAddress)).to.equal(allocation);
+  });
+
+  it("rejects an open where the claimed payer does not match the signer", async function () {
+    const tokenAddress = await mockUSDC.getAddress();
+    const payerAddress = await payer.getAddress();
+    const recipientAddress = await recipient.getAddress();
+    const recoveryAddress = await recovery.getAddress();
+
+    const tx = await factory.connect(payer).deployCorporateVault(tokenAddress);
+    const receipt = await tx.wait();
+    const event = receipt.logs.find(
+      (log: any) => log.fragment && log.fragment.name === "CorporateVaultDeployed"
+    );
+    const cloneAddress = event.args.vaultAddress;
+    const clone = await ethers.getContractAt("ArcOpenRailsHubV2Initializable", cloneAddress);
+
+    const allocation = ethers.parseUnits("100", 6);
+    await mockUSDC.mint(payerAddress, allocation);
+    await mockUSDC.connect(payer).approve(cloneAddress, allocation);
+
+    const paycardId = ethers.keccak256(ethers.toUtf8Bytes("paycard-mismatch"));
+    const metadataHash = ethers.keccak256(ethers.toUtf8Bytes("terms"));
+    const genesisTimestamp = Math.floor(Date.now() / 1000) - 100;
+
+    const domain = {
+      name: "OpenRails Network",
+      version: "1.0.0",
+      chainId: (await ethers.provider.getNetwork()).chainId,
+      verifyingContract: cloneAddress,
+    };
+    const types = {
+      SettlementIntent: [
+        { name: "paycardId", type: "bytes32" },
+        { name: "metadataHash", type: "bytes32" },
+        { name: "recipient", type: "address" },
+        { name: "totalAllocationPool", type: "uint256" },
+        { name: "flowVelocityPerSecond", type: "uint256" },
+        { name: "genesisTimestamp", type: "uint256" },
+        { name: "lifespanSeconds", type: "uint256" },
+        { name: "residualDeltaRecipient", type: "address" },
+        { name: "nonceChannel", type: "uint256" },
+        { name: "nonceValue", type: "uint256" },
+      ],
+    };
+    const message = {
+      paycardId,
+      metadataHash,
+      recipient: recipientAddress,
+      totalAllocationPool: allocation.toString(),
+      flowVelocityPerSecond: "1",
+      genesisTimestamp,
+      lifespanSeconds: 3600,
+      residualDeltaRecipient: recoveryAddress,
+      nonceChannel: "100",
+      nonceValue: "0",
+    };
+    // Signed by `payer`, but we claim `recipient` is the payer -> must revert.
+    const signature = await (payer as any).signTypedData(domain, types, message);
+    await expect(
+      (clone.connect(randomUser) as any).openPaycardChannel(
+        paycardId, metadataHash, recipientAddress, allocation, 1,
+        genesisTimestamp, 3600, recoveryAddress, signature, 100, 0,
+        recipientAddress /* wrong payer */
+      )
+    ).to.be.reverted;
   });
 });
