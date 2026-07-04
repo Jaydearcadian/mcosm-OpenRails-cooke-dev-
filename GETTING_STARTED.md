@@ -47,8 +47,8 @@ import {
   signPermissionEnvelopeWithSigner,
   submitOpenPaycardWithSigner,
   readNonce,
-} from "openrails-sdk/dist/wallet"; // wallet helpers
-import { hashOpenRailsMetadata } from "openrails-sdk/dist/metadata";
+  hashOpenRailsMetadata,
+} from "openrails-sdk"; // all re-exported from the package entry
 
 const HUB = "0x941C8029F0f912df3fAb7423890ab2359b996D0b";
 const USDC = "0x3600000000000000000000000000000000000000";
