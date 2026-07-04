@@ -11,6 +11,7 @@
 ## Global Constraints
 
 - Solidity `^0.8.26`. Signature verification uses **OpenZeppelin `SignatureChecker.isValidSignatureNow`** (add `@openzeppelin/contracts` v5 as a contracts dependency). Rationale: signature verification is the security-critical path and belongs in the audited library, not hand-rolled — even though the rest of the suite is intentionally dependency-free (Ownable2Step, ReentrancyGuard, SafeERC20 wrappers are inline). This is the only OZ import; keep the rest of the contract's inline primitives as-is.
+- **`viaIR` compilation is REQUIRED** (`viaIR: true` in `hardhat.config.ts` `solidity.settings`, and `via_ir = true` in `foundry.toml`). The open functions' 12 flat parameters (incl. the trailing `payer`) exceed the legacy-codegen stack limit ("Stack too deep") at calldata decode; `viaIR` is the standard, semantics-preserving fix. This applies project-wide — the existing V1 Hardhat (58) and Foundry (8) suites MUST stay green under it (verify, don't assume).
 - **Do NOT modify** `contracts/ArcOpenRailsHubV1.sol` or `test/foundry/ArcOpenRailsHubV1*.t.sol` — V1 is frozen and left to drain.
 - All V2 contract work lives in `contracts/v2-factory/` (compiled by both Hardhat and Foundry via `foundry.toml` `src = "contracts"`). **Leave the stale duplicate in `experiments/v2-factory/` untouched.**
 - The signed `SettlementIntent` struct and its `ENVELOPE_TYPEHASH` stay **byte-identical to V1** (`payer` is a function argument + verification target, never a signed field).
@@ -267,9 +268,11 @@ Expected: PASS — all three tests (clone isolation, EOA open with `payer`, paye
 - [ ] **Step 5: Commit**
 
 ```bash
-git add contracts/v2-factory/ArcOpenRailsHubV2Initializable.sol test/v2-factory.test.ts package.json package-lock.json
+git add contracts/v2-factory/ArcOpenRailsHubV2Initializable.sol test/v2-factory.test.ts package.json package-lock.json hardhat.config.ts foundry.toml
 git commit -m "V2 hub: explicit payer param + OZ SignatureChecker verification"
 ```
+
+**Note (viaIR):** the 12-param open signature requires `viaIR: true` in `hardhat.config.ts` (`solidity.settings`) and `via_ir = true` in `foundry.toml`. Add both, then run the FULL suites — `npx hardhat test` **and** `forge test` — to confirm the V1 suites stay green under `viaIR` before committing.
 
 ---
 
