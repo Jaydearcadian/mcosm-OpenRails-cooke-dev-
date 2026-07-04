@@ -119,7 +119,7 @@ describe("ArcOpenRailsFactoryV1 & Minimal Proxy Clones E2E", function () {
     // Define typed data for signing
     const domain = {
       name: "OpenRails Network",
-      version: "1.0.0",
+      version: "2.0.0",
       chainId: (await ethers.provider.getNetwork()).chainId,
       verifyingContract: cloneAddress, // Must verify against the clone proxy address!
     };
@@ -208,7 +208,7 @@ describe("ArcOpenRailsFactoryV1 & Minimal Proxy Clones E2E", function () {
 
     const domain = {
       name: "OpenRails Network",
-      version: "1.0.0",
+      version: "2.0.0",
       chainId: (await ethers.provider.getNetwork()).chainId,
       verifyingContract: cloneAddress,
     };
@@ -290,7 +290,7 @@ describe("ArcOpenRailsFactoryV1 & Minimal Proxy Clones E2E", function () {
     const genesisTimestamp = Math.floor(Date.now() / 1000) - 100;
     const domain = {
       name: "OpenRails Network",
-      version: "1.0.0",
+      version: "2.0.0",
       chainId: (await ethers.provider.getNetwork()).chainId,
       verifyingContract: cloneAddress,
     };
@@ -336,6 +336,62 @@ describe("ArcOpenRailsFactoryV1 & Minimal Proxy Clones E2E", function () {
         ethers.keccak256(ethers.toUtf8Bytes("paycard-1271-forged")),
         metadataHash, recipientAddress, allocation, 1,
         genesisTimestamp, 3600, recoveryAddress, forgedSig, 100, 1, smartAddr
+      )
+    ).to.be.revertedWithCustomError(clone, "AccessViolation");
+  });
+
+  it("rejects a signature made under the legacy 1.0.0 domain", async function () {
+    const tokenAddress = await mockUSDC.getAddress();
+    const payerAddress = await payer.getAddress();
+    const recipientAddress = await recipient.getAddress();
+    const recoveryAddress = await recovery.getAddress();
+
+    const tx = await factory.connect(payer).deployCorporateVault(tokenAddress);
+    const receipt = await tx.wait();
+    const event = receipt.logs.find(
+      (log: any) => log.fragment && log.fragment.name === "CorporateVaultDeployed"
+    );
+    const cloneAddress = event.args.vaultAddress;
+    const clone = await ethers.getContractAt("ArcOpenRailsHubV2Initializable", cloneAddress);
+
+    const allocation = ethers.parseUnits("100", 6);
+    await mockUSDC.mint(payerAddress, allocation);
+    await mockUSDC.connect(payer).approve(cloneAddress, allocation);
+
+    const paycardId = ethers.keccak256(ethers.toUtf8Bytes("paycard-stale-domain"));
+    const metadataHash = ethers.keccak256(ethers.toUtf8Bytes("terms"));
+    const genesisTimestamp = Math.floor(Date.now() / 1000) - 100;
+    const staleDomain = {
+      name: "OpenRails Network",
+      version: "1.0.0", // legacy
+      chainId: (await ethers.provider.getNetwork()).chainId,
+      verifyingContract: cloneAddress,
+    };
+    const types = {
+      SettlementIntent: [
+        { name: "paycardId", type: "bytes32" },
+        { name: "metadataHash", type: "bytes32" },
+        { name: "recipient", type: "address" },
+        { name: "totalAllocationPool", type: "uint256" },
+        { name: "flowVelocityPerSecond", type: "uint256" },
+        { name: "genesisTimestamp", type: "uint256" },
+        { name: "lifespanSeconds", type: "uint256" },
+        { name: "residualDeltaRecipient", type: "address" },
+        { name: "nonceChannel", type: "uint256" },
+        { name: "nonceValue", type: "uint256" },
+      ],
+    };
+    const message = {
+      paycardId, metadataHash, recipient: recipientAddress,
+      totalAllocationPool: allocation.toString(), flowVelocityPerSecond: "1",
+      genesisTimestamp, lifespanSeconds: 3600, residualDeltaRecipient: recoveryAddress,
+      nonceChannel: "100", nonceValue: "0",
+    };
+    const staleSig = await (payer as any).signTypedData(staleDomain, types, message);
+    await expect(
+      (clone.connect(randomUser) as any).openPaycardChannel(
+        paycardId, metadataHash, recipientAddress, allocation, 1,
+        genesisTimestamp, 3600, recoveryAddress, staleSig, 100, 0, payerAddress
       )
     ).to.be.revertedWithCustomError(clone, "AccessViolation");
   });

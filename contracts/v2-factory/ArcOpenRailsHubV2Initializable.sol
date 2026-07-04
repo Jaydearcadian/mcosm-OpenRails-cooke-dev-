@@ -178,7 +178,7 @@ contract ArcOpenRailsHubV2Initializable {
         DOMAIN_SEPARATOR = keccak256(abi.encode(
             keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
             keccak256("OpenRails Network"),
-            keccak256("1.0.0"),
+            keccak256("2.0.0"),
             chainId,
             address(this)
         ));
