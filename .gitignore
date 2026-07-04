@@ -8,7 +8,8 @@ typechain-types
 dist
 sdk/dist
 .env
-deployments/*.local.json
+deployments/openrails-addresses.local.json
+deployments/openrails-v2-addresses.local.json
 .factory/
 circle-agent/
 .DS_Store
