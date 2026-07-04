@@ -126,6 +126,7 @@ function ClaimCard() {
         envelope.envelopeSignature as `0x${string}`,
         BigInt(i.nonceChannel),
         BigInt(i.nonceValue),
+        envelope.payerAddress as `0x${string}`, // V2: explicit payer (EOA + EIP-1271)
       ] as const;
       const txHash =
         pl.mode === "railscard_bearer"

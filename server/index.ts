@@ -820,7 +820,7 @@ app.post("/api/paycard/open", apiLimiter, envelopeHeaderParser, async (req, res)
     const receipt = await tx.wait();
     console.log(`Relayer: Transaction mined in block ${receipt.blockNumber}`);
     const openedCard = await clearinghouseContract.registry(intent.paycardId);
-    const intentDigest = hashSettlementIntent(intent, chainId, clearinghouseAddress);
+    const intentDigest = hashSettlementIntent(intent, chainId, clearinghouseAddress, "1.0.0");
 
     res.json({
       success: true,

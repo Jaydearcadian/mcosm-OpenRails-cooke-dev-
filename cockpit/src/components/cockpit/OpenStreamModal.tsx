@@ -242,6 +242,7 @@ export function OpenStreamModal({
         sig,
         0n,
         nonceValue,
+        payer as `0x${string}`, // V2: explicit payer (connected wallet); verified via SignatureChecker
       ] as const;
       const txHash =
         mode === "railscard_bearer"

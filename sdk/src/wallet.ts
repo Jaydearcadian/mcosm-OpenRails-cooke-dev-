@@ -19,8 +19,8 @@ export const OPENRAILS_HUB_ABI = [
   'event ResidualDeltaReclaimed(bytes32 indexed paycardId,address indexed recoveryVault,uint256 varianceSwept)',
   'function registry(bytes32) view returns (address payer,address recipient,bytes32 metadataHash,uint256 totalAllocationPool,uint256 availableBalance,uint256 flowVelocityPerSecond,uint256 genesisTimestamp,uint256 lifespanSeconds,uint256 lastCheckpointEpoch,address residualDeltaRecipient,uint8 operationalStatus)',
   'function accountNonceTracks(address,uint256) view returns (uint256)',
-  'function openPaycardChannel(bytes32,bytes32,address,uint256,uint256,uint256,uint256,address,bytes,uint256,uint256)',
-  'function claimWildcardPaycardChannel(bytes32,bytes32,address,uint256,uint256,uint256,uint256,address,bytes,uint256,uint256)',
+  'function openPaycardChannel(bytes32,bytes32,address,uint256,uint256,uint256,uint256,address,bytes,uint256,uint256,address)',
+  'function claimWildcardPaycardChannel(bytes32,bytes32,address,uint256,uint256,uint256,uint256,address,bytes,uint256,uint256,address)',
   'function processDripSettle(bytes32)',
   'function flushResidualDelta(bytes32)',
 ];
@@ -400,6 +400,7 @@ export async function submitOpenPaycardWithSigner(
     envelope.envelopeSignature,
     intent.nonceChannel,
     intent.nonceValue,
+    envelope.payerAddress, // V2: explicit payer verified via SignatureChecker (EOA + EIP-1271)
   ];
 
   if (resolvedMode === 'railscard_bearer') {

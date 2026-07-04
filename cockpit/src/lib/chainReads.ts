@@ -17,7 +17,7 @@ import type { GatewayConfig, PaycardOnchain, RecoveredPaycard, StreamState, Stre
 export const BUNDLED_CONFIG: GatewayConfig = {
   networkMode: "arc-testnet",
   chainId: 5042002,
-  clearinghouseAddress: "0x01EC54846524D043fD808152D41596beF603381d",
+  clearinghouseAddress: "0x941C8029F0f912df3fAb7423890ab2359b996D0b",
   usdcAddress: "0x3600000000000000000000000000000000000000",
   explorerBaseUrl: "https://testnet.arcscan.app",
   relayerMode: "client-self-submit",

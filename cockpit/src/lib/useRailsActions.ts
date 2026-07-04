@@ -77,6 +77,7 @@ export function useRailsActions() {
         envelope.envelopeSignature as `0x${string}`,
         BigInt(i.nonceChannel),
         BigInt(i.nonceValue),
+        envelope.payerAddress as `0x${string}`, // V2: explicit payer (EOA + EIP-1271)
       ] as const;
 
       setStatus({ id: "submitting" });
@@ -199,6 +200,7 @@ export function useRailsActions() {
         sig,
         0n,
         nonceValue,
+        payer, // V2: explicit payer (connected wallet); verified via SignatureChecker
       ] as const;
       const txHash = await writeContractAsync({
         address: hub,

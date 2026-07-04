@@ -95,10 +95,11 @@ export const OPENRAILS_EIP712_TYPES = {
 export function buildOpenRailsDomain(
   chainId: number,
   verifyingContract: string,
+  version = '2.0.0', // V2 default; pass '1.0.0' to target the frozen/draining V1 hub
 ): ethers.TypedDataDomain {
   return {
     name: 'OpenRails Network',
-    version: '1.0.0',
+    version,
     chainId,
     verifyingContract,
   };
@@ -123,9 +124,10 @@ export function hashSettlementIntent(
   intent: OpenRailsIntentV1,
   chainId: number,
   verifyingContract: string,
+  version = '2.0.0',
 ): string {
   return ethers.TypedDataEncoder.hash(
-    buildOpenRailsDomain(chainId, verifyingContract),
+    buildOpenRailsDomain(chainId, verifyingContract, version),
     OPENRAILS_EIP712_TYPES,
     buildSettlementIntentValue(intent),
   );
@@ -178,6 +180,8 @@ export class LeptonOpenRailsClient {
   private contractAddress: string;
   private chainId: number;
   private clockSkewBufferSeconds: number;
+  /** EIP-712 domain version. Default '2.0.0' (V2 hub); pass '1.0.0' to target the frozen V1 hub. */
+  private domainVersion: string;
 
   /**
    * @param privateKey              - hex-encoded ECDSA private key
@@ -194,6 +198,7 @@ export class LeptonOpenRailsClient {
     chainId: number,
     provider?: ethers.Provider,
     clockSkewBufferSeconds: number = 60,
+    domainVersion: string = '2.0.0',
   ) {
     const wallet = new ethers.Wallet(privateKey, provider);
     this.account = wallet;
@@ -201,6 +206,7 @@ export class LeptonOpenRailsClient {
     this.contractAddress = contractAddress;
     this.chainId = chainId;
     this.clockSkewBufferSeconds = clockSkewBufferSeconds;
+    this.domainVersion = domainVersion;
   }
 
   /**
@@ -215,6 +221,7 @@ export class LeptonOpenRailsClient {
     contractAddress: string,
     chainId: number,
     clockSkewBufferSeconds: number = 60,
+    domainVersion: string = '2.0.0',
   ): Promise<LeptonOpenRailsClient> {
     const client = Object.create(LeptonOpenRailsClient.prototype) as LeptonOpenRailsClient;
     client.account = account;
@@ -222,6 +229,7 @@ export class LeptonOpenRailsClient {
     client.contractAddress = contractAddress;
     client.chainId = chainId;
     client.clockSkewBufferSeconds = clockSkewBufferSeconds;
+    client.domainVersion = domainVersion;
     return client;
   }
 
@@ -262,7 +270,7 @@ export class LeptonOpenRailsClient {
     }
 
     // ----- EIP-712 domain -----
-    const domain = buildOpenRailsDomain(this.chainId, this.contractAddress);
+    const domain = buildOpenRailsDomain(this.chainId, this.contractAddress, this.domainVersion);
 
     if (intent.nonceChannel === undefined || intent.nonceValue === undefined) {
       throw new PayloadSerializationError('nonceChannel and nonceValue are required', [

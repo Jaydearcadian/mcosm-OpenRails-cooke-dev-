@@ -76,7 +76,7 @@ export const OPENRAILS_EIP712_TYPES = {
 export function buildOpenRailsDomain(chainId: number, verifyingContract: `0x${string}`) {
   return {
     name: "OpenRails Network",
-    version: "1.0.0",
+    version: "2.0.0",
     chainId,
     verifyingContract,
   } as const;

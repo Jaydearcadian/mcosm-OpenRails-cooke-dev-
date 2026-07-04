@@ -94,7 +94,10 @@ describe("ArcOpenRailsHubV1", () => {
     const client = new LeptonOpenRailsClient(
       tempWallet.privateKey,
       await clearinghouse.getAddress(),
-      chainId
+      chainId,
+      undefined,
+      60,
+      "1.0.0" // V1 hub uses the legacy EIP-712 domain version
     );
 
     return { client, wallet: tempWallet, providerWallet };
@@ -1279,8 +1282,17 @@ describe("ArcOpenRailsHubV1", () => {
 
   it("SDK wallet helpers should approve, open, settle, and flush with signer", async () => {
     const { wallet, providerWallet } = await createFundedClient("100");
-    const hubAddress = await clearinghouse.getAddress();
     const tokenAddress = await mockUsdc.getAddress();
+    // The SDK wallet opens NEW streams on the V2 hub (V1 is frozen to new opens), so
+    // exercise the approve/open/settle/flush lifecycle against a V2 factory clone.
+    const _master = await (await ethers.getContractFactory("ArcOpenRailsHubV2Initializable")).deploy();
+    await _master.waitForDeployment();
+    const _factory = await (await ethers.getContractFactory("ArcOpenRailsFactoryV1")).deploy(await _master.getAddress());
+    await _factory.waitForDeployment();
+    const _rc = await (await _factory.deployCorporateVault(tokenAddress)).wait();
+    const _ev = _rc.logs.find((l: any) => l.fragment && l.fragment.name === "CorporateVaultDeployed");
+    const hubAddress = _ev.args.vaultAddress as string;
+    const hubV2 = await ethers.getContractAt("ArcOpenRailsHubV2Initializable", hubAddress);
     const metadata = {
       version: "openrails-metadata-v1" as const,
       mode: "railsflow" as const,
@@ -1327,7 +1339,7 @@ describe("ArcOpenRailsHubV1", () => {
     await (await submitSettleWithSigner(providerWallet, hubAddress, intent.paycardId)).wait();
     await (await submitFlushWithSigner(providerWallet, hubAddress, intent.paycardId)).wait();
 
-    const card = await clearinghouse.registry(intent.paycardId);
+    const card = await hubV2.registry(intent.paycardId);
     expect(Number(card.operationalStatus)).to.equal(1);
   });
 
