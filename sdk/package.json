@@ -1,6 +1,6 @@
 {
   "name": "openrails-sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "OpenRails SDK + `openrails` CLI — intent-driven clearing & settlement for streamed USDC work on Arc (RailsFlow, RailsCard, Paycard Streams, nonce lanes, receipts).",
   "license": "MIT",
   "homepage": "https://openrails.pages.dev",
@@ -8,10 +8,22 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-    "./adapters/ethers": { "types": "./dist/adapters/ethers.d.ts", "default": "./dist/adapters/ethers.js" },
-    "./adapters/privy": { "types": "./dist/adapters/privy.d.ts", "default": "./dist/adapters/privy.js" },
-    "./adapters/turnkey": { "types": "./dist/adapters/turnkey.d.ts", "default": "./dist/adapters/turnkey.js" },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./adapters/ethers": {
+      "types": "./dist/adapters/ethers.d.ts",
+      "default": "./dist/adapters/ethers.js"
+    },
+    "./adapters/privy": {
+      "types": "./dist/adapters/privy.d.ts",
+      "default": "./dist/adapters/privy.js"
+    },
+    "./adapters/turnkey": {
+      "types": "./dist/adapters/turnkey.d.ts",
+      "default": "./dist/adapters/turnkey.js"
+    },
     "./package.json": "./package.json"
   },
   "bin": {
@@ -46,8 +58,12 @@
     "@turnkey/ethers": ">=1"
   },
   "peerDependenciesMeta": {
-    "@privy-io/react-auth": { "optional": true },
-    "@turnkey/ethers": { "optional": true }
+    "@privy-io/react-auth": {
+      "optional": true
+    },
+    "@turnkey/ethers": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "typescript": "^5.4.5",

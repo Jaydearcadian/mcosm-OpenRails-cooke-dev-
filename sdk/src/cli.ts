@@ -450,16 +450,22 @@ function readPrivateKeyFromEnv(flags: FlagMap, env: NodeJS.ProcessEnv): string {
   return value;
 }
 
+// Arc testnet V2 defaults so the CLI works with just a signer key. Any of these is
+// overridden by its flag or env var (precedence: flag > OPENRAILS_* env > ARC_* env > default).
+const DEFAULT_RPC_URL = 'https://rpc.testnet.arc.network';
+const DEFAULT_CHAIN_ID = '5042002';
+const DEFAULT_HUB_ADDRESS = '0x941C8029F0f912df3fAb7423890ab2359b996D0b'; // V2 canonical hub
+const DEFAULT_USDC_ADDRESS = '0x3600000000000000000000000000000000000000';
+
 function readRpcUrl(flags: FlagMap, env: NodeJS.ProcessEnv): string {
   return readOptionalStringFlag(flags, 'rpc-url') ??
     env.OPENRAILS_RPC_URL ??
     env.ARC_RPC_URL ??
-    missing('--rpc-url or OPENRAILS_RPC_URL');
+    DEFAULT_RPC_URL;
 }
 
 function readChainId(flags: FlagMap, env: NodeJS.ProcessEnv): number {
-  const value = readOptionalStringFlag(flags, 'chain-id') ?? env.OPENRAILS_CHAIN_ID ?? env.ARC_CHAIN_ID;
-  if (!value) missing('--chain-id or OPENRAILS_CHAIN_ID');
+  const value = readOptionalStringFlag(flags, 'chain-id') ?? env.OPENRAILS_CHAIN_ID ?? env.ARC_CHAIN_ID ?? DEFAULT_CHAIN_ID;
   return parseInteger(String(value), 'chain-id');
 }
 
@@ -469,7 +475,7 @@ function readHubAddress(flags: FlagMap, env: NodeJS.ProcessEnv): string {
       readOptionalStringFlag(flags, 'vault') ??
       env.OPENRAILS_HUB_ADDRESS ??
       env.OPENRAILS_CLEARINGHOUSE_ADDRESS ??
-      missing('--hub or OPENRAILS_HUB_ADDRESS'),
+      DEFAULT_HUB_ADDRESS,
     'hub',
   );
 }
@@ -480,7 +486,7 @@ function readTokenAddress(flags: FlagMap, env: NodeJS.ProcessEnv): string {
       readOptionalStringFlag(flags, 'usdc') ??
       env.OPENRAILS_USDC_ADDRESS ??
       env.ARC_USDC_ADDRESS ??
-      missing('--token or OPENRAILS_USDC_ADDRESS'),
+      DEFAULT_USDC_ADDRESS,
     'token',
   );
 }
