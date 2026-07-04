@@ -112,14 +112,14 @@ openrails request-stream \
   --metadata-hash 0x<keccak256-of-your-terms>
 ```
 
-**Pay a request** (transacts). The CLI is low-level: beyond a `--request-link`, you supply the
-paycard id, nonce lane, and residual recipient yourself:
+**Pay a request** (transacts). The crypto plumbing is auto-derived, so this is all you need:
 ```bash
-openrails pay-stream \
-  --request-link '<link from request-stream>' \
-  --paycard-id 0x<random-bytes32> \
-  --residual-delta-recipient 0x<you> \
-  --nonce-channel 0 --nonce-value <current-onchain-nonce-for-this-lane> \
+openrails pay-stream --request-link '<link from request-stream>' --approve --execute
+```
+Or without a link, just the payment terms:
+```bash
+openrails pay-stream --recipient 0x<you> \
+  --total-allocation-pool 10000 --flow-velocity-per-second 1 --lifespan-seconds 3600 \
   --approve --execute
 ```
 
@@ -132,9 +132,10 @@ Other commands: `stream-status --paycard-id 0x...` (read), `settle --paycard-id 
 - `--approve` does the bounded USDC allowance; `close` also needs `--ack-irrevocable-close`.
 - Run `openrails <command> --help` for the full flag list.
 
-> The CLI does **not** auto-derive `--paycard-id`, `--nonce-value`, or `--metadata-hash` — those are
-> explicit so scripts stay deterministic. For a hands-free first payment, use Path A (cockpit) or Path
-> B (SDK library), which compute them for you.
+> When omitted, the CLI auto-derives `--paycard-id` (random), `--metadata-hash` (from `--metadata-ref`,
+> else a default), `--nonce-value` (read from the chain nonce lane), and `--residual-delta-recipient`
+> (defaults to the payer) — so `pay-stream --request-link … --execute` just works. Pass any of them
+> explicitly to override, e.g. for deterministic scripting or a specific nonce lane.
 
 ---
 

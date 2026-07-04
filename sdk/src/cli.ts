@@ -204,11 +204,45 @@ async function handlePayStream(
   const requestPayload = requestArtifact?.payload as RailsFlowLinkPayloadV1 | undefined;
   const execute = hasExecute(flags);
   const signOnly = flags['sign-only'] === true;
+  const willSign = execute || signOnly;
   const mode = readOptionalModeFlag(flags, 'mode');
+
+  // Fields the SDK/cockpit normally auto-compute — derived here when omitted so a bare
+  // `pay-stream --request-link … --execute` just works. Explicit flags always take precedence.
+  const paycardId =
+    readOptionalBytes32Flag(flags, 'paycard-id') ?? ethers.hexlify(ethers.randomBytes(32));
+  const metadataHash =
+    requestArtifact?.metadataHash ??
+    readOptionalBytes32Flag(flags, 'metadata-hash') ??
+    ethers.keccak256(
+      ethers.toUtf8Bytes(readOptionalStringFlag(flags, 'metadata-ref') ?? `openrails:${paycardId}`),
+    );
+  const recipient = readAddressFlag(flags, 'recipient', requestPayload?.recipient);
+  const nonceChannel = readOptionalIntegerFlag(flags, 'nonce-channel') ?? 0;
+  let nonceValue = readOptionalIntegerFlag(flags, 'nonce-value');
+  let residual = readOptionalAddressFlag(flags, 'residual-delta-recipient');
+
+  // When we'll sign, resolve the payer from the key; auto-read the on-chain nonce lane and
+  // default the residual recipient to the payer if the caller omitted them.
+  let provider: ethers.JsonRpcProvider | undefined;
+  let signer: ethers.Wallet | undefined;
+  let payerAddress: string | undefined;
+  let currentNonce: number | undefined;
+  if (willSign) {
+    signer = makeSigner(flags, env);
+    payerAddress = await signer.getAddress();
+    if (residual === undefined) residual = payerAddress;
+    if (nonceValue === undefined) {
+      provider = makeProvider(flags, env);
+      currentNonce = await readNonce(provider, hub, payerAddress, nonceChannel);
+      nonceValue = currentNonce;
+    }
+  }
+
   const intent: OpenRailsIntentV1 = {
-    paycardId: readBytes32Flag(flags, 'paycard-id'),
-    metadataHash: requestArtifact?.metadataHash ?? readBytes32Flag(flags, 'metadata-hash'),
-    recipient: readAddressFlag(flags, 'recipient', requestPayload?.recipient),
+    paycardId,
+    metadataHash,
+    recipient,
     totalAllocationPool: readStringFlag(flags, 'total-allocation-pool', requestPayload?.amount),
     flowVelocityPerSecond: readStringFlag(
       flags,
@@ -217,9 +251,9 @@ async function handlePayStream(
     ),
     genesisTimestamp: readOptionalIntegerFlag(flags, 'genesis-timestamp') ?? nowSeconds(),
     lifespanSeconds: readIntegerFlag(flags, 'lifespan-seconds', requestPayload?.lifespanSeconds),
-    residualDeltaRecipient: readAddressFlag(flags, 'residual-delta-recipient'),
-    nonceChannel: readIntegerFlag(flags, 'nonce-channel'),
-    nonceValue: readIntegerFlag(flags, 'nonce-value'),
+    residualDeltaRecipient: residual ?? recipient,
+    nonceChannel,
+    nonceValue: nonceValue ?? 0,
   };
   const resolvedMode = mode ?? inferEnvelopeModeFromIntent(intent);
 
@@ -263,12 +297,14 @@ async function handlePayStream(
   };
   if (!execute) return signedResult;
 
-  const provider = makeProvider(flags, env);
+  if (provider === undefined) provider = makeProvider(flags, env);
   await assertOpenRailsNetwork(provider, chainId);
-  const signer = makeSigner(flags, env);
-  const payerAddress = await signer.getAddress();
+  if (signer === undefined) signer = makeSigner(flags, env);
+  if (payerAddress === undefined) payerAddress = await signer.getAddress();
   const allocation = BigInt(intent.totalAllocationPool);
-  const currentNonce = await readNonce(provider, hub, payerAddress, intent.nonceChannel);
+  if (currentNonce === undefined) {
+    currentNonce = await readNonce(provider, hub, payerAddress, intent.nonceChannel);
+  }
   assertExactNonceBeforeApproval(intent.nonceValue, currentNonce);
   const balance = await readTokenBalance(provider, token, payerAddress);
   if (balance < allocation) {
