@@ -70,6 +70,36 @@ await claimGasless({ relay, envelopeToken, claimRecipient });
 - **Permit:** `signUsdcPermit` produces an EIP-2612 permit so the payer's approval is a signature,
   not a transaction. Combined with the relay → no gas, no approval tx.
 
+### Privy embedded wallets (humans)
+
+A Privy embedded wallet exposes a standard EIP-1193 provider — bridge it into an
+`OpenRailsAccount` with `privyToAccount`, then drive the same gasless flow above:
+
+```tsx
+import { useWallets } from "@privy-io/react-auth";
+import { privyToAccount } from "openrails-sdk/adapters/privy";
+import { LeptonOpenRailsClient, payGasless, RelayClient } from "openrails-sdk";
+
+const { wallets } = useWallets();
+const embedded = wallets.find(
+  (w) => w.walletClientType === "privy" || w.walletClientType === "privy-v2",
+);
+
+const provider = await embedded.getEthereumProvider();
+const account  = privyToAccount({ address: embedded.address, provider });
+const client   = await LeptonOpenRailsClient.fromAccount(account, hubAddress, chainId);
+
+const relay = new RelayClient({ baseUrl: RELAY_URL });
+await payGasless({ client, relay, intent, options: { mode: "railsflow", metadata } });
+```
+
+The embedded wallet only ever *signs* — it never needs gas or a submitted transaction, since
+`payGasless`/`claimGasless` route through the relay. `walletClientType` is Privy's own field for
+distinguishing its embedded wallet (`"privy"` or the newer `"privy-v2"`) from an injected/external
+one. This snippet is checked against the installed `@privy-io/react-auth` types but isn't
+execution-tested here (that needs a real browser + Privy session) — `test/PrivyAdapter.test.ts`
+in this repo proves the signing math end to end with a mock EIP-1193 provider instead.
+
 For an agent-facing surface over these, see the companion **`openrails-mcp`** MCP server.
 
 ## CLI

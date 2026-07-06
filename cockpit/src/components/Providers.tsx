@@ -1,35 +1,25 @@
 import type { ReactNode } from "react";
-import { WagmiProvider } from "wagmi";
+import { WagmiProvider as BareWagmiProvider } from "wagmi";
+import { WagmiProvider as PrivyWagmiProvider } from "@privy-io/wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
 import { PrivyProvider } from "@privy-io/react-auth";
-import "@rainbow-me/rainbowkit/styles.css";
 import { wagmiConfig } from "../lib/wagmi-config";
 
 const queryClient = new QueryClient();
 
 const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID as string | undefined;
 
-const rkTheme = darkTheme({
-  accentColor: "#009E60",
-  accentColorForeground: "#04070D",
-  borderRadius: "large",
-  overlayBlur: "small",
-});
-
-function WagmiTree({ children }: { children: ReactNode }) {
-  return (
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider theme={rkTheme}>{children}</RainbowKitProvider>
-      </QueryClientProvider>
-    </WagmiProvider>
-  );
-}
-
 export function Providers({ children }: { children: ReactNode }) {
   if (!PRIVY_APP_ID) {
-    return <WagmiTree>{children}</WagmiTree>;
+    // No Privy app id configured — Privy is now the only connect path (RainbowKit removed, see
+    // the dashboard IA spec's Connect UX decision), so without it nothing can connect a wallet.
+    // Fall back to a bare wagmi provider so the app still renders (reads still work) rather than
+    // crashing outright.
+    return (
+      <BareWagmiProvider config={wagmiConfig}>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </BareWagmiProvider>
+    );
   }
   return (
     <PrivyProvider
@@ -37,14 +27,16 @@ export function Providers({ children }: { children: ReactNode }) {
       config={{
         loginMethods: ["google", "wallet"],
         appearance: {
-          theme: "dark",
+          theme: "light",
           accentColor: "#009E60",
           logo: "",
         },
         embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
       }}
     >
-      <WagmiTree>{children}</WagmiTree>
+      <QueryClientProvider client={queryClient}>
+        <PrivyWagmiProvider config={wagmiConfig}>{children}</PrivyWagmiProvider>
+      </QueryClientProvider>
     </PrivyProvider>
   );
 }

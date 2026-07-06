@@ -1,0 +1,36 @@
+name = "openrails-indexer-worker"
+main = "src/index.ts"
+compatibility_date = "2026-06-24"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ARC_CHAIN_ID = "5042002"
+ARC_RPC_URL = "https://rpc.testnet.arc.network"
+# V2 canonical hub (always watched). V1 (frozen/draining, not indexed): 0x01EC54846524D043fD808152D41596beF603381d
+OPENRAILS_HUB_ADDRESS = "0x941C8029F0f912df3fAb7423890ab2359b996D0b"
+# ArcOpenRailsFactoryV1 — clones discovered via its CorporateVaultDeployed event are auto-watched.
+OPENRAILS_FACTORY_ADDRESS = "0xf85c20858Bac4f9C67a53e4e7a8F31025D07Bc93"
+# getLogs chunk size per call — the public Arc RPC caps ranges at ~10,000 blocks (same pattern as
+# SETTLER_WINDOW_BLOCKS in reconciliation-worker and WINDOW in cockpit/src/lib/chainReads.ts).
+SCAN_WINDOW_BLOCKS = "9000"
+# Caps total getLogs calls (factory discovery + all watched vaults) in a single cron tick, so one
+# invocation's wall time/CPU stays bounded. Remaining backfill continues on the next tick.
+MAX_CHUNKS_PER_TICK = "20"
+# First-run cursor default when a scan_key has no row yet: start this many blocks behind head
+# instead of requiring a hand-looked-up factory deployment block. On this chain's block rate,
+# confirmed via eth_getCode binary search that the factory (deployed 2026-07-04) already sits
+# ~156k blocks behind head one day later — 200k comfortably covers the product's whole V2 history
+# so far, and matches the order of magnitude of the SDK's own established max lookback
+# (PAYCARD_RECOVERY_MAX_LOOKBACK_BLOCKS = 250,000 in sdk/src/wallet.ts).
+INITIAL_BACKFILL_BLOCKS = "200000"
+
+[[d1_databases]]
+binding = "STREAM_DB"
+database_name = "openrails_indexer_db"
+database_id = "e9e9a594-6cbd-404a-8f90-b22b33fe77fd"
+
+# Secrets (never in this file): set with `wrangler secret put INDEXER_ADMIN_TOKEN` to guard the
+# manual POST /tick trigger. The scheduled cron below needs no secret.
+
+[triggers]
+crons = ["*/5 * * * *"]

@@ -25,12 +25,17 @@ docs/dashboard_frontend_and_endpoints.md
 docs/canteen_cli_status.md
 # Local pickup/handoff briefing — not part of the shipped package
 docs/project_state_and_handoff.md
+# Handoff artifact for the separate new webapp repo — meant to be copied elsewhere, not shipped here
+docs/webapp_integration_brief.md
 
 # Local experiments not intended for this V1 package
 experiments/name-registry/
 
 # Local Wrangler state
 **/.wrangler/state/
+
+# Wrangler local-dev secrets (e.g. INDEXER_ADMIN_TOKEN) — never commit
+**/.dev.vars
 
 # Stream gateway persistent projection (runtime data, non-authoritative)
 .openrails-stream/
@@ -43,3 +48,7 @@ experiments/traction-bots/metrics.json
 
 # npm pack tarballs (generated)
 *.tgz
+
+# Generated image assets
+assets/
+

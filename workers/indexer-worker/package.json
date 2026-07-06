@@ -1,0 +1,16 @@
+{
+  "name": "indexer-worker",
+  "version": "1.0.0",
+  "description": "OpenRails Durable Indexer + Read API Worker (factory-aware, D1-backed)",
+  "main": "src/index.ts",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "start": "wrangler dev"
+  },
+  "dependencies": {
+    "ethers": "^6.13.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.104.0"
+  }
+}

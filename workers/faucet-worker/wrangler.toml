@@ -1,0 +1,27 @@
+name = "openrails-faucet-worker"
+main = "src/index.ts"
+compatibility_date = "2026-06-24"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ARC_CHAIN_ID = "5042002"
+ARC_RPC_URL = "https://rpc.testnet.arc.network"
+ARC_USDC_ADDRESS = "0x3600000000000000000000000000000000000000"
+# Amount sent per successful drip.
+FAUCET_DRIP_AMOUNT_USDC = "0.05"
+# Skip funding a wallet that already holds at least this much.
+FAUCET_MAX_BALANCE_USDC = "0.10"
+# Global safety valve, on top of the wallet's own limited balance.
+FAUCET_MAX_DRIPS_PER_DAY = "500"
+# Per-address AND per-IP cooldown between drips.
+FAUCET_COOLDOWN_SECONDS = "86400"
+# Kill switch — set "false" to disable /fund instantly without a redeploy.
+FAUCET_ENABLED = "true"
+
+[[kv_namespaces]]
+binding = "FAUCET_CLAIMS"
+id = "796e96d0c81b465890609c5b4b401b3b"
+
+# Secrets (never in this file): set with `wrangler secret put FAUCET_SIGNER_KEY` (the dedicated
+# faucet wallet from `npm run faucet:wallet` — fund it via the Circle faucet UI, never the
+# deployer/governance wallet) and `wrangler secret put FAUCET_ADMIN_TOKEN` (guards GET /status).

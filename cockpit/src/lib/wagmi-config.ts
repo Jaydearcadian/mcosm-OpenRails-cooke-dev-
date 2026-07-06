@@ -1,13 +1,13 @@
-import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { http } from "wagmi";
+import { createConfig } from "@privy-io/wagmi";
 import { arcTestnet } from "./chain";
 
-export const wagmiConfig = getDefaultConfig({
-  appName: "OpenRails Cockpit",
-  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ?? "openrails-demo",
+// createConfig from @privy-io/wagmi (not plain wagmi) — its WagmiProvider auto-syncs Privy's
+// connected wallets (embedded or external) as wagmi connectors, so every existing wagmi hook
+// (useAccount, useSignTypedData, useWriteContract, usePublicClient) keeps working unchanged.
+export const wagmiConfig = createConfig({
   chains: [arcTestnet],
   transports: {
     [arcTestnet.id]: http("https://rpc.testnet.arc.network"),
   },
-  ssr: false,
 });

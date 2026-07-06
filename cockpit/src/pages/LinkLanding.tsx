@@ -4,13 +4,17 @@
  * Reads the `#or=` token straight from the URL, shows the terms in plain words,
  * gates on Connect Wallet, then pays (RailsFlow) or claims (RailsCard) via the
  * shared self-submit hook. Mounted at /openrails/flow and /openrails/card.
+ *
+ * Visually matches the new light Cockpit design system (Panel / PrimaryButton),
+ * not the old dark "liquid glass" theme still used by Landing.tsx.
  */
 import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { useAccount } from "wagmi";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { revealParent, revealChild, Glass, Eyebrow } from "../components/Glass";
+import { ConnectWalletButton } from "../components/ConnectWalletButton";
+import { revealParent, revealChild } from "../components/Glass";
+import { Panel, PrimaryButton } from "../components/cockpit/Panel";
 import { toUsdc, fmtUsd, shortHex } from "../lib/api";
 import {
   parseOpenRailsLink,
@@ -20,6 +24,14 @@ import {
 } from "../lib/links";
 import { deserializeEnvelope, type CryptographicEnvelopeV1 } from "../lib/intents";
 import { useRailsActions } from "../lib/useRailsActions";
+
+const MONO = "'JetBrains Mono', monospace";
+const PAGE_BG = "radial-gradient(120% 100% at 100% 0%, #FDFEFF 0%, #EDF0F4 55%, #E4E8EE 100%)";
+const INK = "#0B1120";
+const INK_SECONDARY = "rgba(11,17,32,0.55)";
+const INK_FAINT = "rgba(11,17,32,0.42)";
+const GREEN = "#009E60";
+const GREEN_DEEP = "#00794A";
 
 function velPerHr(basePerSec: string | number): string {
   return ((Number(basePerSec) / 1e6) * 3600).toFixed(4);
@@ -83,6 +95,15 @@ function buildTerms(a: OpenRailsLinkArtifact): Terms {
   };
 }
 
+function DefRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+  return (
+    <>
+      <dt style={{ color: INK_FAINT }}>{label}</dt>
+      <dd style={{ margin: 0, textAlign: "right", color: valueColor ?? INK_SECONDARY }}>{value}</dd>
+    </>
+  );
+}
+
 export default function LinkLanding() {
   const { isConnected } = useAccount();
   const { config, status, busy, act, claimRailsCard, claimRailsCardSponsored, payRailsFlowSponsored, reset } = useRailsActions();
@@ -99,126 +120,231 @@ export default function LinkLanding() {
   const explorer = config?.explorerBaseUrl ?? "https://testnet.arcscan.app";
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-10">
-      <motion.div variants={revealParent} initial="hidden" animate="show">
-        <motion.div variants={revealChild} className="mb-5 flex items-center justify-between">
-          <Link to="/" className="font-mono text-base font-bold text-emerald-core">//openrails</Link>
-          <ConnectButton showBalance={false} chainStatus="icon" />
+    <div
+      style={{
+        fontFamily: "Inter, system-ui, sans-serif",
+        color: INK,
+        minHeight: "100vh",
+        background: PAGE_BG,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "40px 16px",
+      }}
+    >
+      <motion.div variants={revealParent} initial="hidden" animate="show" style={{ width: "100%", maxWidth: 520 }}>
+        <motion.div variants={revealChild} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <Link to="/" style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: GREEN, textDecoration: "none" }}>
+            //openrails
+          </Link>
+          <ConnectWalletButton />
         </motion.div>
 
         {parsed.error || !parsed.artifact || !parsed.terms ? (
-          <Glass className="flex flex-col items-center gap-3 p-10 text-center">
-            <span className="font-mono text-4xl text-amber-400/50">⚠</span>
-            <Eyebrow>This link couldn't be read</Eyebrow>
-            <p className="max-w-sm text-sm text-ink-secondary">
-              {parsed.error ?? "Missing or invalid OpenRails link."}
-            </p>
-            <Link to="/cockpit" className="mt-2 font-mono text-[11px] text-emerald-core hover:underline">
-              Open the cockpit →
-            </Link>
-          </Glass>
-        ) : (
-          <Glass className="p-6">
-            <div className="flex items-center justify-between">
-              <h1 className="text-xl font-semibold text-ink-primary">{parsed.terms.title}</h1>
-              <span className="rounded-full border border-emerald-core/30 bg-emerald-core/10 px-2.5 py-0.5 font-mono text-[10px] text-emerald-core">
-                {parsed.terms.kind}
+          <Panel>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "44px 28px", textAlign: "center" }}>
+              <span
+                style={{
+                  display: "grid",
+                  placeItems: "center",
+                  width: 48,
+                  height: 48,
+                  borderRadius: 13,
+                  background: "rgba(199,58,58,0.1)",
+                  color: "#C73A3A",
+                  fontSize: 22,
+                  fontWeight: 700,
+                }}
+              >
+                !
               </span>
+              <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: INK_FAINT }}>
+                This link couldn't be read
+              </div>
+              <p style={{ margin: 0, maxWidth: 360, fontSize: 13, lineHeight: 1.6, color: INK_SECONDARY }}>
+                {parsed.error ?? "Missing or invalid OpenRails link."}
+              </p>
+              <Link to="/cockpit" style={{ marginTop: 4, fontFamily: MONO, fontSize: 11, color: GREEN, textDecoration: "none" }}>
+                Open the cockpit →
+              </Link>
             </div>
+          </Panel>
+        ) : (
+          <Panel>
+            <div style={{ padding: 24 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>{parsed.terms.title}</h1>
+                <span
+                  style={{
+                    flex: "0 0 auto",
+                    fontFamily: MONO,
+                    fontSize: 10,
+                    color: GREEN_DEEP,
+                    background: "rgba(0,158,96,0.1)",
+                    border: "1px solid rgba(0,158,96,0.3)",
+                    borderRadius: 999,
+                    padding: "3px 10px",
+                  }}
+                >
+                  {parsed.terms.kind}
+                </span>
+              </div>
 
-            <dl className="mt-5 grid grid-cols-2 gap-y-2 border-t border-white/8 pt-4 font-mono text-[12px]">
-              <dt className="text-ink-faint">Type</dt>
-              <dd className="text-right text-emerald-core">{parsed.terms.instant ? "One-time" : "Streaming"}</dd>
-              <dt className="text-ink-faint">Value</dt>
-              <dd className="text-right text-ink-primary">${fmtUsd(parsed.terms.valueUsdc)} USDC</dd>
-              {parsed.terms.instant ? (
-                <>
-                  <dt className="text-ink-faint">Settles</dt>
-                  <dd className="text-right text-ink-secondary">in full, once</dd>
-                </>
-              ) : (
-                <>
-                  <dt className="text-ink-faint">Velocity</dt>
-                  <dd className="text-right text-ink-secondary">{parsed.terms.velocityHr} USDC/hr</dd>
-                  <dt className="text-ink-faint">Lifespan</dt>
-                  <dd className="text-right text-ink-secondary">{humanDuration(parsed.terms.lifespanSeconds)}</dd>
-                </>
-              )}
-              <dt className="text-ink-faint">{parsed.terms.counterpartyLabel}</dt>
-              <dd className="text-right text-ink-secondary">{shortHex(parsed.terms.counterparty, 8, 6)}</dd>
-            </dl>
+              <dl
+                style={{
+                  margin: 0,
+                  marginTop: 18,
+                  paddingTop: 16,
+                  borderTop: "1px solid rgba(11,17,32,0.08)",
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr",
+                  rowGap: 8,
+                  columnGap: 12,
+                  fontFamily: MONO,
+                  fontSize: 12,
+                }}
+              >
+                <DefRow label="Type" value={parsed.terms.instant ? "One-time" : "Streaming"} valueColor={GREEN_DEEP} />
+                <DefRow label="Value" value={`$${fmtUsd(parsed.terms.valueUsdc)} USDC`} valueColor={INK} />
+                {parsed.terms.instant ? (
+                  <DefRow label="Settles" value="in full, once" />
+                ) : (
+                  <>
+                    <DefRow label="Velocity" value={`${parsed.terms.velocityHr} USDC/hr`} />
+                    <DefRow label="Lifespan" value={humanDuration(parsed.terms.lifespanSeconds)} />
+                  </>
+                )}
+                <DefRow label={parsed.terms.counterpartyLabel} value={shortHex(parsed.terms.counterparty, 8, 6)} />
+              </dl>
 
-            <p className="mt-4 rounded-lg bg-white/5 px-3 py-2 font-mono text-[11px] leading-relaxed text-ink-faint">
-              {parsed.terms.note}
-            </p>
+              <p
+                style={{
+                  margin: 0,
+                  marginTop: 16,
+                  borderRadius: 10,
+                  background: "rgba(11,17,32,0.035)",
+                  border: "1px solid rgba(11,17,32,0.06)",
+                  padding: "11px 13px",
+                  fontFamily: MONO,
+                  fontSize: 11,
+                  lineHeight: 1.6,
+                  color: INK_FAINT,
+                }}
+              >
+                {parsed.terms.note}
+              </p>
 
-            <div className="mt-5">
-              {status.id === "success" ? (
-                <div className="rounded-xl border border-emerald-core/30 bg-emerald-core/10 p-4 font-mono text-[12px] text-emerald-core">
-                  <p className="font-semibold">
-                    {parsed.terms.kind === "railscard" ? "Claimed ✓" : "Stream opened ✓"}
-                  </p>
-                  <p className="mt-1 text-ink-secondary">
-                    Paycard {shortHex(status.paycardId, 8, 6)} ·{" "}
-                    <a className="text-emerald-core underline" href={`${explorer}/tx/${status.txHash}`} target="_blank" rel="noopener noreferrer">
-                      view tx
-                    </a>
-                  </p>
-                  <Link to="/cockpit" className="mt-3 inline-block text-[11px] text-emerald-core hover:underline">
-                    View in cockpit →
-                  </Link>
-                </div>
-              ) : !isConnected ? (
-                <div className="flex flex-col items-center gap-3 rounded-xl border border-white/8 bg-white/5 p-5 text-center">
-                  <Eyebrow>Connect a wallet to {parsed.terms.kind === "railscard" ? "claim" : "pay"}</Eyebrow>
-                  <ConnectButton label="Connect Wallet" showBalance={false} />
-                </div>
-              ) : (
-                <>
-                  <button
-                    onClick={() =>
-                      parsed.terms!.kind === "railscard"
-                        ? claimRailsCardSponsored(parsed.artifact!)
-                        : payRailsFlowSponsored(parsed.artifact!)
-                    }
-                    disabled={busy || !config}
-                    className="w-full rounded-xl bg-emerald-core px-4 py-3 font-mono text-sm font-semibold text-[#04070D] transition hover:brightness-110 disabled:opacity-50"
+              <div style={{ marginTop: 20 }}>
+                {status.id === "success" ? (
+                  <div
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,158,96,0.3)",
+                      background: "rgba(0,158,96,0.08)",
+                      padding: 16,
+                      fontFamily: MONO,
+                      fontSize: 12,
+                      color: GREEN_DEEP,
+                    }}
                   >
-                    {status.id === "approving"
-                      ? "Approving USDC…"
-                      : status.id === "signing"
-                      ? "Sign in your wallet…"
-                      : status.id === "submitting"
-                      ? "Submitting to Arc…"
-                      : parsed.terms.kind === "railscard"
-                      ? "Claim · gas sponsored"
-                      : "Pay · gas sponsored"}
-                  </button>
-                  {!busy && (
-                    <button
+                    <p style={{ margin: 0, fontWeight: 700 }}>
+                      {parsed.terms.kind === "railscard" ? "Claimed ✓" : "Stream opened ✓"}
+                    </p>
+                    <p style={{ margin: 0, marginTop: 4, color: INK_SECONDARY }}>
+                      Paycard {shortHex(status.paycardId, 8, 6)} ·{" "}
+                      <a style={{ color: GREEN_DEEP, textDecoration: "underline" }} href={`${explorer}/tx/${status.txHash}`} target="_blank" rel="noopener noreferrer">
+                        view tx
+                      </a>
+                    </p>
+                    <Link to="/cockpit" style={{ display: "inline-block", marginTop: 12, fontSize: 11, color: GREEN_DEEP, textDecoration: "none" }}>
+                      View in cockpit →
+                    </Link>
+                  </div>
+                ) : !isConnected ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 12,
+                      borderRadius: 12,
+                      border: "1px solid rgba(11,17,32,0.1)",
+                      background: "rgba(11,17,32,0.025)",
+                      padding: 20,
+                      textAlign: "center",
+                    }}
+                  >
+                    <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: INK_FAINT }}>
+                      Connect a wallet to {parsed.terms.kind === "railscard" ? "claim" : "pay"}
+                    </span>
+                    <ConnectWalletButton />
+                  </div>
+                ) : (
+                  <>
+                    <PrimaryButton
                       onClick={() =>
                         parsed.terms!.kind === "railscard"
-                          ? claimRailsCard(parsed.artifact!)
-                          : act(parsed.artifact!)
+                          ? claimRailsCardSponsored(parsed.artifact!)
+                          : payRailsFlowSponsored(parsed.artifact!)
                       }
-                      disabled={!config}
-                      className="mt-2 w-full font-mono text-[11px] text-ink-faint underline decoration-white/20 underline-offset-2 transition hover:text-ink-secondary disabled:opacity-50"
+                      disabled={busy || !config}
+                      style={{ width: "100%", borderRadius: 12, padding: "13px 20px", fontFamily: MONO, fontSize: 13 }}
                     >
-                      or self-submit (you pay gas)
-                    </button>
-                  )}
-                  {status.id === "error" && (
-                    <p className="mt-2 break-words font-mono text-[11px] text-amber-400/90">
-                      {status.msg}{" "}
-                      <button onClick={reset} className="underline opacity-70 hover:opacity-100">
-                        try again
+                      {status.id === "approving"
+                        ? "Approving USDC…"
+                        : status.id === "signing"
+                        ? "Sign in your wallet…"
+                        : status.id === "submitting"
+                        ? "Submitting to Arc…"
+                        : parsed.terms.kind === "railscard"
+                        ? "Claim · gas sponsored"
+                        : "Pay · gas sponsored"}
+                    </PrimaryButton>
+                    {!busy && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          parsed.terms!.kind === "railscard"
+                            ? claimRailsCard(parsed.artifact!)
+                            : act(parsed.artifact!)
+                        }
+                        disabled={!config}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          marginTop: 10,
+                          background: "none",
+                          border: "none",
+                          cursor: config ? "pointer" : "not-allowed",
+                          fontFamily: MONO,
+                          fontSize: 11,
+                          color: INK_FAINT,
+                          textDecoration: "underline",
+                          textUnderlineOffset: 2,
+                          opacity: config ? 1 : 0.5,
+                        }}
+                      >
+                        or self-submit (you pay gas)
                       </button>
-                    </p>
-                  )}
-                </>
-              )}
+                    )}
+                    {status.id === "error" && (
+                      <p style={{ margin: 0, marginTop: 10, wordBreak: "break-word", fontFamily: MONO, fontSize: 11, color: "#C73A3A" }}>
+                        {status.msg}{" "}
+                        <button
+                          type="button"
+                          onClick={reset}
+                          style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "#C73A3A", textDecoration: "underline", opacity: 0.75 }}
+                        >
+                          try again
+                        </button>
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          </Glass>
+          </Panel>
         )}
       </motion.div>
     </div>
