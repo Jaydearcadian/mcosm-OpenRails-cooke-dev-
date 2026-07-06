@@ -12,7 +12,7 @@ export function Deck({ streamsData }: { streamsData: IndexerStreamsData }) {
   ];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+    <div className="ck-deck-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
       {kpis.map((k) => (
         <div
           key={k.label}

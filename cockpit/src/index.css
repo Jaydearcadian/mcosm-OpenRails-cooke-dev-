@@ -96,6 +96,25 @@
   background-clip: padding-box;
 }
 
+/* ── OpenRails landing (light marketing page) — keyframes + scoped hover states.
+   Ported 1:1 from the approved Claude Design prototype (or-* names preserved). */
+@keyframes or-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes or-dash { to { stroke-dashoffset: -1400; } }
+@keyframes or-drift { 0%,100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(2%,-3%,0) scale(1.06); } }
+@keyframes or-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(1.35); } }
+@keyframes or-flow { to { background-position: 28px 0; } }
+@keyframes or-shimmer { 0% { transform: translateX(-120%) skewX(-18deg); } 100% { transform: translateX(240%) skewX(-18deg); } }
+
+/* style-hover ports (base styles stay inline; :hover only overrides the authored props) */
+.or-navlink:hover { color: #0B1120 !important; }
+.or-github:hover { color: #0B1120 !important; border-color: rgba(11,17,32,0.3) !important; }
+.or-nav-cta:hover { background: #009E60 !important; box-shadow: 0 6px 22px rgba(0,158,96,0.4) !important; }
+.or-hero-cta:hover { background: #009E60 !important; box-shadow: 0 12px 32px rgba(0,158,96,0.45) !important; }
+.or-outline:hover { border-color: rgba(11,17,32,0.4) !important; }
+.or-docs-cta:hover { background: #00C878 !important; color: #04070D !important; }
+.or-dark-pill:hover { border-color: rgba(0,200,120,0.6) !important; color: #FFFFFF !important; }
+.or-final-cta:hover { background: #009E60 !important; box-shadow: 0 16px 42px rgba(0,158,96,0.45) !important; }
+
 /* Respect reduced-motion: still the ambient + ticker animations. */
 @media (prefers-reduced-motion: reduce) {
   *,

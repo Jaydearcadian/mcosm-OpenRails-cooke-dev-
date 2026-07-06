@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useIndexerStreams } from "../../lib/useIndexerStreams";
 import { indexer, isEvmAddress, isBytes32Hex, type IndexedStream } from "../../lib/indexer";
-import { fmtUsdcBase, shortHex, statusMeta } from "../../lib/cockpitFormat";
-import { Panel } from "./Panel";
+import { fmtUsdcBase, shortHex, statusMeta, explorerTxUrl, explorerAddressUrl } from "../../lib/cockpitFormat";
+import { Panel, ExplorerLink } from "./Panel";
 
 type QueryShape = "empty" | "address" | "hash" | "workflow" | "invalid";
 
@@ -97,7 +97,7 @@ export function Explorer({ onOpenDetail }: { onOpenDetail: (vaultAddress: string
       </div>
 
       {shape === "empty" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16, marginTop: 16 }}>
+        <div className="ck-explorer-grid" style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16, marginTop: 16 }}>
           <Panel>
             <div style={{ padding: "16px 20px 12px", fontSize: 14, fontWeight: 700 }}>Recent activity</div>
             {data.streams.length === 0 ? (
@@ -114,7 +114,7 @@ export function Explorer({ onOpenDetail }: { onOpenDetail: (vaultAddress: string
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 600 }}>{shortHex(s.paycardId, 8, 4)}</div>
                       <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, color: "rgba(11,17,32,0.5)", marginTop: 3 }}>
-                        {shortHex(s.payer)} → {shortHex(s.recipient)}
+                        <ExplorerLink href={explorerAddressUrl(s.payer)}>{shortHex(s.payer)}</ExplorerLink> → <ExplorerLink href={explorerAddressUrl(s.recipient)}>{shortHex(s.recipient)}</ExplorerLink>
                       </div>
                     </div>
                     <span style={{ display: "flex", alignItems: "center", gap: 8, color: meta.text }}>
@@ -134,7 +134,9 @@ export function Explorer({ onOpenDetail }: { onOpenDetail: (vaultAddress: string
             ) : (
               data.vaults.map((v) => (
                 <div key={v.vaultAddress} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "13px 20px", borderTop: "1px solid rgba(11,17,32,0.06)" }}>
-                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 600 }}>{shortHex(v.vaultAddress)}</div>
+                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 600 }}>
+                    <ExplorerLink href={explorerAddressUrl(v.vaultAddress)}>{shortHex(v.vaultAddress)}</ExplorerLink>
+                  </div>
                   {v.discoverySource === "canonical" && (
                     <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "#00794A", background: "rgba(0,158,96,0.1)", border: "1px solid rgba(0,158,96,0.3)", borderRadius: 999, padding: "2px 8px" }}>
                       hub
@@ -151,7 +153,9 @@ export function Explorer({ onOpenDetail }: { onOpenDetail: (vaultAddress: string
         <div style={{ marginTop: 16 }}>
           <Panel style={{ padding: "20px 22px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 600 }}>{shortHex(q)}</span>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 600 }}>
+                <ExplorerLink href={explorerAddressUrl(q)}>{shortHex(q)} ↗</ExplorerLink>
+              </span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12, marginTop: 16 }}>
               <div style={{ background: "rgba(11,17,32,0.03)", border: "1px solid rgba(11,17,32,0.06)", borderRadius: 11, padding: "12px 14px" }}>
@@ -177,7 +181,7 @@ export function Explorer({ onOpenDetail }: { onOpenDetail: (vaultAddress: string
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 600 }}>{shortHex(s.paycardId, 8, 4)}</div>
                       <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, color: "rgba(11,17,32,0.5)", marginTop: 3 }}>
-                        {shortHex(s.payer)} → {shortHex(s.recipient)} · {fmtUsdcBase(s.totalAllocation, 2)} USDC
+                        <ExplorerLink href={explorerAddressUrl(s.payer)}>{shortHex(s.payer)}</ExplorerLink> → <ExplorerLink href={explorerAddressUrl(s.recipient)}>{shortHex(s.recipient)}</ExplorerLink> · {fmtUsdcBase(s.totalAllocation, 2)} USDC
                       </div>
                     </div>
                     <span style={{ color: meta.text }}>{meta.label}</span>
@@ -197,7 +201,7 @@ export function Explorer({ onOpenDetail }: { onOpenDetail: (vaultAddress: string
           <Panel style={{ marginTop: 12 }}>
             {hashMatches.map((s) => (
               <div key={`${s.vaultAddress}:${s.paycardId}`} onClick={() => onOpenDetail(s.vaultAddress, s.paycardId)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "14px 20px", borderBottom: "1px solid rgba(11,17,32,0.05)", cursor: "pointer" }}>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 600 }}>vault {shortHex(s.vaultAddress)}</div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 600 }}>vault <ExplorerLink href={explorerAddressUrl(s.vaultAddress)}>{shortHex(s.vaultAddress)}</ExplorerLink></div>
               </div>
             ))}
           </Panel>
@@ -221,7 +225,7 @@ export function Explorer({ onOpenDetail }: { onOpenDetail: (vaultAddress: string
       {shape === "hash" && !hashLoading && hashMatches && hashMatches.length === 0 && txFallback && txFallback.streams.length > 0 && (
         <div style={{ marginTop: 16 }}>
           <div style={{ padding: "11px 14px", borderRadius: 10, background: "rgba(42,111,219,0.1)", border: "1px solid rgba(42,111,219,0.3)", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#1E4FA3", marginBottom: 12 }}>
-            Not a paycardId — resolved as a transaction hash instead.
+            Not a paycardId — resolved as a transaction hash instead. <ExplorerLink href={explorerTxUrl(q.trim())} style={{ textDecoration: "underline" }}>View on arcscan ↗</ExplorerLink>
           </div>
           <Panel>
             {txFallback.streams.map((s) => (
@@ -240,6 +244,11 @@ export function Explorer({ onOpenDetail }: { onOpenDetail: (vaultAddress: string
           <div style={{ marginTop: 8, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, lineHeight: 1.6, color: "rgba(11,17,32,0.55)", maxWidth: 520, marginLeft: "auto", marginRight: "auto" }}>
             Checked every watched vault's paycard state and the indexer's transaction log — genuinely not found, not just
             outside a loaded window.
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <ExplorerLink href={explorerTxUrl(q.trim())} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#009E60", textDecoration: "underline" }}>
+              Check {shortHex(q.trim())} on arcscan anyway ↗
+            </ExplorerLink>
           </div>
         </div>
       )}

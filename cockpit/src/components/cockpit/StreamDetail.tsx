@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Panel, RefreshButton, LoadingSkeletons, ErrorState, SecondaryButton, PrimaryButton } from "./Panel";
-import { fmtUsdcBase, shortHex, statusMeta, receiptTypeMeta, eventAmount } from "../../lib/cockpitFormat";
+import { Panel, RefreshButton, LoadingSkeletons, ErrorState, SecondaryButton, PrimaryButton, ExplorerLink } from "./Panel";
+import { fmtUsdcBase, shortHex, statusMeta, receiptTypeMeta, eventAmount, explorerTxUrl, explorerAddressUrl } from "../../lib/cockpitFormat";
 import { indexer, type IndexedEvent, type IndexedStream } from "../../lib/indexer";
 
 export function StreamDetail({
@@ -73,7 +73,9 @@ export function StreamDetail({
                 </span>
               )}
             </div>
-            <div style={{ marginTop: 3, fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, color: "rgba(11,17,32,0.42)" }}>vault {shortHex(vaultAddress)}</div>
+            <div style={{ marginTop: 3, fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, color: "rgba(11,17,32,0.42)" }}>
+              vault <ExplorerLink href={explorerAddressUrl(vaultAddress)}>{shortHex(vaultAddress)}</ExplorerLink>
+            </div>
           </div>
         </div>
         <RefreshButton onClick={() => load(true)} spinning={refreshing} />
@@ -126,9 +128,9 @@ export function StreamDetail({
               </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
-              <span>payer {state ? shortHex(state.payer) : "—"}</span>
+              <span>payer {state ? <ExplorerLink href={explorerAddressUrl(state.payer)}>{shortHex(state.payer)}</ExplorerLink> : "—"}</span>
               <span style={{ color: "rgba(255,255,255,0.3)" }}>→</span>
-              <span>recipient {state ? shortHex(state.recipient) : "—"}</span>
+              <span>recipient {state ? <ExplorerLink href={explorerAddressUrl(state.recipient)}>{shortHex(state.recipient)}</ExplorerLink> : "—"}</span>
             </div>
           </div>
 
@@ -136,18 +138,20 @@ export function StreamDetail({
             <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: "rgba(11,17,32,0.4)", marginBottom: 12 }}>
               Composite key &amp; parties
             </div>
-            {[
-              ["Vault", vaultAddress],
-              ["Paycard ID", paycardId],
-              ["Payer", state?.payer ?? "—"],
-              ["Recipient", state?.recipient ?? "—"],
-              ["Metadata hash", state?.metadataHash ?? "—"],
-              ["Genesis", state ? new Date(state.genesis * 1000).toLocaleString() : "—"],
-              ["Lifespan", state ? (state.lifespan === 0 ? "one-time" : `${state.lifespan}s`) : "—"],
-            ].map(([k, v]) => (
+            {([
+              ["Vault", vaultAddress, "address"],
+              ["Paycard ID", paycardId, "plain"],
+              ["Payer", state?.payer ?? "—", "address"],
+              ["Recipient", state?.recipient ?? "—", "address"],
+              ["Metadata hash", state?.metadataHash ?? "—", "plain"],
+              ["Genesis", state ? new Date(state.genesis * 1000).toLocaleString() : "—", "plain"],
+              ["Lifespan", state ? (state.lifespan === 0 ? "one-time" : `${state.lifespan}s`) : "—", "plain"],
+            ] as const).map(([k, v, kind]) => (
               <div key={k} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "9px 0", borderBottom: "1px solid rgba(11,17,32,0.06)" }}>
                 <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "rgba(11,17,32,0.5)", flex: "0 0 auto" }}>{k}</span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#0B1120", textAlign: "right", wordBreak: "break-all" }}>{v}</span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#0B1120", textAlign: "right", wordBreak: "break-all" }}>
+                  {kind === "address" && v !== "—" ? <ExplorerLink href={explorerAddressUrl(v)}>{v}</ExplorerLink> : v}
+                </span>
               </div>
             ))}
             {state?.status === "Active" && (
@@ -206,7 +210,9 @@ export function StreamDetail({
                     </div>
                     <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "#0B1120" }}>{fmtUsdcBase(amt, 2)} USDC</div>
                     <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "rgba(11,17,32,0.55)", minWidth: 0 }}>
-                      <div style={{ color: "rgba(11,17,32,0.4)" }}>{shortHex(h.transactionHash, 10, 6)}</div>
+                      <div style={{ color: "rgba(11,17,32,0.4)" }}>
+                        <ExplorerLink href={explorerTxUrl(h.transactionHash)}>{shortHex(h.transactionHash, 10, 6)} ↗</ExplorerLink>
+                      </div>
                     </div>
                     <div style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontSize: 10.5, color: "#00794A" }}>✓ on-chain</div>
                   </div>

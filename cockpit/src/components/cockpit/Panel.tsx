@@ -21,6 +21,24 @@ export function Panel({ children, style, maxWidth }: { children: ReactNode; styl
   );
 }
 
+/** A hex value (tx hash / address) that links out to the Arc testnet explorer.
+ * Always stops click propagation so it's safe to drop inside an onClick'd row. */
+export function ExplorerLink({ href, children, style }: { href: string; children: ReactNode; style?: CSSProperties }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      style={{ color: "inherit", textDecoration: "none", ...style }}
+      onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+      onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+    >
+      {children}
+    </a>
+  );
+}
+
 export function RefreshButton({ onClick, spinning, label = "Refresh" }: { onClick: () => void; spinning?: boolean; label?: string }) {
   return (
     <button

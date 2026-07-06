@@ -1,5 +1,15 @@
 /** Shared formatting/style helpers for the new Cockpit views. */
 
+export const EXPLORER_BASE_URL = "https://testnet.arcscan.app";
+
+export function explorerTxUrl(hash: string): string {
+  return `${EXPLORER_BASE_URL}/tx/${hash}`;
+}
+
+export function explorerAddressUrl(address: string): string {
+  return `${EXPLORER_BASE_URL}/address/${address}`;
+}
+
 export function shortHex(a: string | undefined | null, lead = 6, tail = 4): string {
   if (!a || typeof a !== "string") return "—";
   if (a.length <= lead + tail + 2) return a;

@@ -39,10 +39,13 @@ const NAV_GROUPS: NavGroup[] = [
 export function Sidebar({
   active,
   onSelect,
-  collapsed,
+  collapsed: collapsedProp,
   onToggleCollapse,
   onNewPayment,
   indexerLive,
+  isMobile = false,
+  mobileOpen = false,
+  onCloseMobile,
 }: {
   active: CockpitView;
   onSelect: (v: CockpitView) => void;
@@ -50,20 +53,57 @@ export function Sidebar({
   onToggleCollapse: () => void;
   onNewPayment: () => void;
   indexerLive: boolean;
+  isMobile?: boolean;
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }) {
-  const asideStyle: CSSProperties = {
-    position: "relative",
-    zIndex: 2,
-    flex: `0 0 ${collapsed ? "72px" : "236px"}`,
-    display: "flex",
-    flexDirection: "column",
-    height: "100vh",
-    background: "rgba(255,255,255,0.55)",
-    backdropFilter: "blur(22px) saturate(160%)",
-    WebkitBackdropFilter: "blur(22px) saturate(160%)",
-    borderRight: "1px solid rgba(11,17,32,0.08)",
-    transition: "flex-basis 0.24s cubic-bezier(0.4,0,0.2,1)",
+  // On phones the sidebar is a full off-canvas drawer, never the 72px icon rail.
+  const collapsed = isMobile ? false : collapsedProp;
+
+  // On mobile, selecting anything should drop the drawer so the user lands on content.
+  const handleSelect = (v: CockpitView) => {
+    onSelect(v);
+    if (isMobile) onCloseMobile?.();
   };
+  const handleNewPayment = () => {
+    onNewPayment();
+    if (isMobile) onCloseMobile?.();
+  };
+
+  // Desktop branch keeps the exact source values (0.55 bg, relative flex-basis rail).
+  // Mobile branch: fixed off-canvas drawer sliding in over the content.
+  const asideStyle: CSSProperties = isMobile
+    ? {
+        position: "fixed",
+        top: 0,
+        left: 0,
+        bottom: 0,
+        zIndex: 60,
+        width: 236,
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        background: "rgba(255,255,255,0.95)",
+        backdropFilter: "blur(22px) saturate(160%)",
+        WebkitBackdropFilter: "blur(22px) saturate(160%)",
+        borderRight: "1px solid rgba(11,17,32,0.08)",
+        transform: mobileOpen ? "translateX(0)" : "translateX(-100%)",
+        transition: "transform 0.26s cubic-bezier(0.4,0,0.2,1)",
+        boxShadow: mobileOpen ? "0 20px 60px rgba(4,7,13,0.28)" : "none",
+      }
+    : {
+        position: "relative",
+        zIndex: 2,
+        flex: `0 0 ${collapsed ? "72px" : "236px"}`,
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        background: "rgba(255,255,255,0.55)",
+        backdropFilter: "blur(22px) saturate(160%)",
+        WebkitBackdropFilter: "blur(22px) saturate(160%)",
+        borderRight: "1px solid rgba(11,17,32,0.08)",
+        transition: "flex-basis 0.24s cubic-bezier(0.4,0,0.2,1)",
+      };
 
   const brandRowStyle: CSSProperties = {
     display: "flex",
@@ -87,13 +127,18 @@ export function Sidebar({
               height: 34,
               borderRadius: 10,
               background: "#0B0B0C",
+              overflow: "hidden",
               boxShadow: "0 4px 14px rgba(4,7,13,0.28), inset 0 1px 0 rgba(255,255,255,0.14)",
-              color: "#00C878",
-              fontFamily: "'JetBrains Mono', monospace",
-              fontWeight: 700,
             }}
           >
-            OR
+            <img
+              src="/assets/or-logo.jpg"
+              alt="OpenRails"
+              style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scale(1.32)", display: "block" }}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
+              }}
+            />
           </span>
           {!collapsed && (
             <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.1, whiteSpace: "nowrap" }}>
@@ -106,8 +151,8 @@ export function Sidebar({
         </Link>
         <button
           type="button"
-          onClick={onToggleCollapse}
-          title="Toggle sidebar"
+          onClick={isMobile ? onCloseMobile : onToggleCollapse}
+          title={isMobile ? "Close menu" : "Toggle sidebar"}
           style={{
             flex: "0 0 auto",
             display: "grid",
@@ -122,14 +167,14 @@ export function Sidebar({
             fontSize: 14,
           }}
         >
-          {collapsed ? "»" : "«"}
+          {isMobile ? "✕" : collapsed ? "»" : "«"}
         </button>
       </div>
 
       <div style={{ padding: "2px 14px 4px" }}>
         <button
           type="button"
-          onClick={onNewPayment}
+          onClick={handleNewPayment}
           title="New Payment"
           style={{
             display: "flex",
@@ -179,7 +224,7 @@ export function Sidebar({
                 <button
                   key={it.id}
                   type="button"
-                  onClick={() => onSelect(it.id)}
+                  onClick={() => handleSelect(it.id)}
                   title={it.name}
                   style={{
                     display: "flex",

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { indexer, type IndexedEvent } from "../../lib/indexer";
-import { fmtUsdcBase, shortHex, receiptTypeMeta, eventAmount } from "../../lib/cockpitFormat";
-import { Panel, RefreshButton, LoadingSkeletons } from "./Panel";
+import { fmtUsdcBase, shortHex, receiptTypeMeta, eventAmount, explorerTxUrl, explorerAddressUrl } from "../../lib/cockpitFormat";
+import { Panel, RefreshButton, LoadingSkeletons, ExplorerLink } from "./Panel";
 import type { ReceiptModalData } from "./ReceiptExportModal";
 
 interface LedgerRow {
@@ -184,10 +184,17 @@ export function Receipts({
                 </div>
                 <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 600 }}>{fmtUsdcBase(amt, 2)}</div>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>{shortHex(counterpartyAddr)}</div>
+                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>
+                    <ExplorerLink href={explorerAddressUrl(counterpartyAddr)}>{shortHex(counterpartyAddr)}</ExplorerLink>
+                  </div>
                   <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: "rgba(11,17,32,0.42)" }}>{isPayer ? "you paid" : "you received"}</div>
                 </div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "rgba(11,17,32,0.65)" }}>{r.event.blockTimestamp ? new Date(r.event.blockTimestamp * 1000).toLocaleDateString() : "—"}</div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "rgba(11,17,32,0.65)" }}>
+                  <div>{r.event.blockTimestamp ? new Date(r.event.blockTimestamp * 1000).toLocaleDateString() : "—"}</div>
+                  <div style={{ marginTop: 2, fontSize: 10, color: "rgba(11,17,32,0.42)" }}>
+                    <ExplorerLink href={explorerTxUrl(r.event.transactionHash)}>{shortHex(r.event.transactionHash, 8, 4)} ↗</ExplorerLink>
+                  </div>
+                </div>
                 <div style={{ minWidth: 0, fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
                   <button onClick={() => onOpenStream(r.vaultAddress, r.paycardId)} style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", color: "#009E60", fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
                     {shortHex(r.paycardId, 8, 4)} ›

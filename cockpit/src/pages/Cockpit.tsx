@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
+import "../components/cockpit/responsive.css";
 import { ConnectWalletButton } from "../components/ConnectWalletButton";
 import { Sidebar, type CockpitView } from "../components/cockpit/Sidebar";
 import { Deck } from "../components/cockpit/Deck";
@@ -18,6 +19,26 @@ import { useIndexerStreams } from "../lib/useIndexerStreams";
 const HUB = "0x941C8029F0f912df3fAb7423890ab2359b996D0b";
 const USDC = "0x3600000000000000000000000000000000000000";
 
+// Tracks whether we're below the mobile breakpoint; re-evaluates on resize /
+// orientation change. Drawer open/close itself is separate React state.
+function useIsMobile(query = "(max-width: 767px)") {
+  const [matches, setMatches] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(query).matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setMatches(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    window.addEventListener("resize", on);
+    return () => {
+      mq.removeEventListener("change", on);
+      window.removeEventListener("resize", on);
+    };
+  }, [query]);
+  return matches;
+}
+
 const TITLES: Record<CockpitView, [string, string]> = {
   deck: ["Deck", "Overview · Arc testnet"],
   streams: ["Streams", "Every stream where you're payer or recipient"],
@@ -31,6 +52,13 @@ export default function Cockpit() {
   const { address } = useAccount();
   const [active, setActive] = useState<CockpitView>("deck");
   const [collapsed, setCollapsed] = useState(false);
+  const isMobile = useIsMobile();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // Growing past the breakpoint should never leave the drawer state stranded.
+  useEffect(() => {
+    if (!isMobile) setMobileNavOpen(false);
+  }, [isMobile]);
   const [selected, setSelected] = useState<{ vaultAddress: string; paycardId: string } | null>(null);
   const [npOpen, setNpOpen] = useState(false);
   const [confirm, setConfirm] = useState<{ kind: ConfirmKind; vaultAddress: string; paycardId: string } | null>(null);
@@ -75,7 +103,18 @@ export default function Cockpit() {
         onToggleCollapse={() => setCollapsed((c) => !c)}
         onNewPayment={() => setNpOpen(true)}
         indexerLive={streamsData.status === "ready"}
+        isMobile={isMobile}
+        mobileOpen={mobileNavOpen}
+        onCloseMobile={() => setMobileNavOpen(false)}
       />
+
+      {/* backdrop — mobile drawer only */}
+      {isMobile && mobileNavOpen && (
+        <div
+          onClick={() => setMobileNavOpen(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 55, background: "rgba(4,7,13,0.42)", animation: "ck-backdrop-in 0.2s ease" }}
+        />
+      )}
 
       <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         <header
@@ -86,19 +125,45 @@ export default function Cockpit() {
             alignItems: "center",
             justifyContent: "space-between",
             gap: 20,
-            padding: "16px 28px",
+            padding: isMobile ? "12px 14px" : "16px 28px",
             borderBottom: "1px solid rgba(11,17,32,0.08)",
             background: "rgba(237,240,244,0.7)",
             backdropFilter: "blur(18px)",
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>{selected ? "Stream detail" : title}</h1>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "rgba(11,17,32,0.5)" }}>
-              <span>{crumb}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            {isMobile && (
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(true)}
+                aria-label="Open navigation"
+                style={{
+                  flex: "0 0 auto",
+                  display: "grid",
+                  placeItems: "center",
+                  width: 34,
+                  height: 34,
+                  borderRadius: 9,
+                  border: "1px solid rgba(11,17,32,0.12)",
+                  background: "rgba(255,255,255,0.7)",
+                  color: "#0B1120",
+                  fontSize: 16,
+                  cursor: "pointer",
+                }}
+              >
+                ☰
+              </button>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+              <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>{selected ? "Stream detail" : title}</h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "rgba(11,17,32,0.5)", ...(isMobile ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : null) }}>
+                <span>{crumb}</span>
+              </div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {!isMobile && (
+            <>
             <div
               title="The indexer is a non-authoritative projection of on-chain state. The Vault is the source of truth."
               style={{
@@ -136,6 +201,8 @@ export default function Cockpit() {
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#00C878", boxShadow: "0 0 8px rgba(0,200,120,0.9)" }} />
               Arc testnet
             </div>
+            </>
+            )}
             <ConnectWalletButton />
           </div>
         </header>
@@ -147,7 +214,7 @@ export default function Cockpit() {
             display: "flex",
             alignItems: "center",
             gap: 10,
-            padding: "9px 28px",
+            padding: isMobile ? "9px 14px" : "9px 28px",
             background: "rgba(4,7,13,0.92)",
             color: "rgba(255,255,255,0.72)",
             fontFamily: "'JetBrains Mono', monospace",
@@ -159,7 +226,7 @@ export default function Cockpit() {
           <span>Testnet is live</span>
         </div>
 
-        <main className="ck-scroll" style={{ position: "relative", zIndex: 1, flex: 1, overflowY: "auto", padding: "28px 28px 60px" }}>
+        <main className="ck-scroll" style={{ position: "relative", zIndex: 1, flex: 1, overflowY: "auto", padding: isMobile ? "20px 14px 48px" : "28px 28px 60px" }}>
           <div style={{ maxWidth: 1120, margin: "0 auto" }}>
             {selected ? (
               <StreamDetail

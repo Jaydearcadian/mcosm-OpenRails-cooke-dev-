@@ -49,6 +49,6 @@ experiments/traction-bots/metrics.json
 # npm pack tarballs (generated)
 *.tgz
 
-# Generated image assets
-assets/
+# Generated image assets (root-level scratch folder only — cockpit/public/assets/ is real, tracked source)
+/assets/
 

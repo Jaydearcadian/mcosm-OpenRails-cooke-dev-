@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
-import { Panel, RefreshButton, EmptyState, ErrorState, LoadingSkeletons } from "./Panel";
-import { fmtUsdcBase, shortHex, statusMeta, secsAgo } from "../../lib/cockpitFormat";
+import { Panel, RefreshButton, EmptyState, ErrorState, LoadingSkeletons, ExplorerLink } from "./Panel";
+import { fmtUsdcBase, shortHex, statusMeta, secsAgo, explorerAddressUrl } from "../../lib/cockpitFormat";
 import type { IndexerStreamsData } from "../../lib/useIndexerStreams";
 import type { IndexedStream } from "../../lib/indexer";
 
@@ -119,7 +119,8 @@ export function Streams({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2.1fr 1.3fr 1.6fr 1fr 0.9fr", gap: 14, padding: "11px 22px", borderTop: "1px solid rgba(11,17,32,0.07)", borderBottom: "1px solid rgba(11,17,32,0.07)", background: "rgba(11,17,32,0.02)", fontFamily: "'JetBrains Mono', monospace", fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(11,17,32,0.42)" }}>
+      <div className="ck-table-scroll">
+      <div className="ck-row-grid" style={{ display: "grid", gridTemplateColumns: "2.1fr 1.3fr 1.6fr 1fr 0.9fr", gap: 14, padding: "11px 22px", borderTop: "1px solid rgba(11,17,32,0.07)", borderBottom: "1px solid rgba(11,17,32,0.07)", background: "rgba(11,17,32,0.02)", fontFamily: "'JetBrains Mono', monospace", fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(11,17,32,0.42)" }}>
         <div>Stream · payer → recipient</div>
         <div>Status</div>
         <div>Streamed / pool</div>
@@ -146,6 +147,7 @@ export function Streams({
           </div>
         </div>
       )}
+      </div>
     </Panel>
   );
 }
@@ -157,19 +159,20 @@ function StreamRow({ r, onClick }: { r: IndexedStream; onClick: () => void }) {
   return (
     <div
       onClick={onClick}
+      className="ck-row-grid"
       style={{ display: "grid", gridTemplateColumns: "2.1fr 1.3fr 1.6fr 1fr 0.9fr", gap: 14, padding: "15px 22px", borderBottom: "1px solid rgba(11,17,32,0.05)", alignItems: "center", cursor: "pointer" }}
     >
       <div style={{ minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, fontWeight: 600, color: "#0B1120" }}>{shortHex(r.paycardId, 8, 4)}</span>
           <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9.5, color: "rgba(11,17,32,0.36)", background: "rgba(11,17,32,0.045)", borderRadius: 5, padding: "1px 6px" }}>
-            {shortHex(r.vaultAddress, 6, 4)}
+            <ExplorerLink href={explorerAddressUrl(r.vaultAddress)}>{shortHex(r.vaultAddress, 6, 4)}</ExplorerLink>
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "rgba(11,17,32,0.52)" }}>
-          <span>{shortHex(r.payer)}</span>
+          <ExplorerLink href={explorerAddressUrl(r.payer)}>{shortHex(r.payer)}</ExplorerLink>
           <span style={{ color: "rgba(11,17,32,0.3)" }}>→</span>
-          <span>{shortHex(r.recipient)}</span>
+          <ExplorerLink href={explorerAddressUrl(r.recipient)}>{shortHex(r.recipient)}</ExplorerLink>
         </div>
       </div>
       <div>
