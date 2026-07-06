@@ -24,6 +24,14 @@
       "types": "./dist/adapters/turnkey.d.ts",
       "default": "./dist/adapters/turnkey.js"
     },
+    "./adapters/circle": {
+      "types": "./dist/adapters/circle.d.ts",
+      "default": "./dist/adapters/circle.js"
+    },
+    "./gateway": {
+      "types": "./dist/gateway.d.ts",
+      "default": "./dist/gateway.js"
+    },
     "./package.json": "./package.json"
   },
   "bin": {

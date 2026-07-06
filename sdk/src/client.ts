@@ -297,9 +297,11 @@ export class LeptonOpenRailsClient {
     const signature = await this.account.signTypedData(domain, types, value);
 
     // ----- Signature sanity check -----
-    const recoveredSigner = ethers.verifyTypedData(domain, types, value, signature);
-    if (recoveredSigner.toLowerCase() !== this.address.toLowerCase()) {
-      throw new SignatureVerificationError(this.address, recoveredSigner);
+    if (!this.account.isSmartAccount) {
+      const recoveredSigner = ethers.verifyTypedData(domain, types, value, signature);
+      if (recoveredSigner.toLowerCase() !== this.address.toLowerCase()) {
+        throw new SignatureVerificationError(this.address, recoveredSigner);
+      }
     }
 
     // ----- Build envelope & serialize -----

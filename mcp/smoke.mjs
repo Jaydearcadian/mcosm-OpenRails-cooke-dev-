@@ -21,7 +21,34 @@ async function call(name, args = {}) {
 
 const hasSigner = Boolean(process.env.OPENRAILS_MCP_SIGNER_KEY);
 await call('openrails_config');
-await call('create_request_link', hasSigner ? { amount: '3000', oneTime: true } : { amount: '3000', oneTime: true, recipient: '0x0000000000000000000000000000000000000001' });
+
+// Create the request link
+const requestLinkResult = await client.callTool({
+  name: 'create_request_link',
+  arguments: hasSigner 
+    ? { amount: '1000', oneTime: true } 
+    : { amount: '1000', oneTime: true, recipient: '0x0000000000000000000000000000000000000001' }
+});
+
+const requestLinkText = requestLinkResult.content[0].text;
+console.log('\n== Generated Request Link ==\n' + requestLinkText);
+
+// Extract the link JSON/URL. The tool returns JSON as string.
+let linkUrl = '';
+try {
+  const parsed = JSON.parse(requestLinkText);
+  linkUrl = parsed.link;
+} catch {
+  // Fallback: extract link using regex if it is not formatted as pure JSON
+  const match = requestLinkText.match(/https?:\/\/[^\s]+/);
+  if (match) linkUrl = match[0];
+}
+
+if (hasSigner && linkUrl) {
+  console.log(`\nPaying link: ${linkUrl}`);
+  await call('pay_link', { link: linkUrl });
+}
+
 if (process.argv[2]) await call('paycard_status', { paycardId: process.argv[2] });
 
 await client.close();

@@ -19,6 +19,8 @@ import type { ethers } from 'ethers';
 
 /** The minimal capability OpenRails needs to authorize an intent or a permit. */
 export interface OpenRailsAccount {
+  /** Optional flag indicating this is a smart contract account. */
+  isSmartAccount?: boolean;
   /** Returns the account's address (checksummed by convention). */
   getAddress(): Promise<string>;
   /**
