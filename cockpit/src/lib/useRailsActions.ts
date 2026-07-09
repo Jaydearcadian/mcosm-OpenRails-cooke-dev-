@@ -9,7 +9,7 @@
  * them). Mirrors OpenStreamModal.handleOpen / Creator.ClaimCard.claim.
  */
 import { useState } from "react";
-import { useAccount, useSignTypedData, useWriteContract, usePublicClient } from "wagmi";
+import { useAccount, useSignTypedData, useWriteContract, usePublicClient, useSwitchChain } from "wagmi";
 import { api, useConfig } from "./api";
 import { USDC_ABI, HUB_ABI } from "./contracts";
 import { arcTestnet } from "./chain";
@@ -41,6 +41,7 @@ export type RailsActionStatus =
 
 export function useRailsActions() {
   const { address, chainId } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
   const { signTypedDataAsync } = useSignTypedData();
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient();
@@ -58,11 +59,64 @@ export function useRailsActions() {
   async function claimRailsCard(artifact: OpenRailsLinkArtifact): Promise<void> {
     if (!config) return setStatus({ id: "error", msg: "Config not loaded." });
     if (!address) return setStatus({ id: "error", msg: "Connect a wallet first." });
+    
+    // Enforce switching to Arc Testnet
+    if (chainId !== arcTestnet.id) {
+      try {
+        await switchChainAsync({ chainId: arcTestnet.id });
+      } catch (err) {
+        return setStatus({ id: "error", msg: "Please switch your wallet network to Arc Testnet." });
+      }
+    }
+
     const pl = artifact.payload as RailsCardLinkPayload;
     try {
       const envelope = deserializeEnvelope<CryptographicEnvelopeV1>(pl.envelopeToken);
       const i = envelope.intent;
       const hub = config.clearinghouseAddress as `0x${string}`;
+      const usdc = config.usdcAddress as `0x${string}`;
+
+      // Submit EIP-2612 permit on-chain first if it exists in the RailsCard link
+      if (envelope.permit) {
+        setStatus({ id: "approving" });
+        const p = envelope.permit;
+        try {
+          const permitTx = await writeContractAsync({
+            address: usdc,
+            abi: [
+              {
+                name: "permit",
+                type: "function",
+                stateMutability: "nonpayable",
+                inputs: [
+                  { name: "owner", type: "address" },
+                  { name: "spender", type: "address" },
+                  { name: "value", type: "uint256" },
+                  { name: "deadline", type: "uint256" },
+                  { name: "v", type: "uint8" },
+                  { name: "r", type: "bytes32" },
+                  { name: "s", type: "bytes32" },
+                ],
+                outputs: [],
+              },
+            ] as const,
+            functionName: "permit",
+            args: [
+              p.owner as `0x${string}`,
+              p.spender as `0x${string}`,
+              BigInt(p.value),
+              BigInt(p.deadline),
+              p.v,
+              p.r as `0x${string}`,
+              p.s as `0x${string}`,
+            ],
+          });
+          await publicClient!.waitForTransactionReceipt({ hash: permitTx, timeout: 120_000 });
+        } catch (permitErr) {
+          console.warn("Permit already used or failed:", permitErr);
+        }
+      }
+
       const recipientArg =
         pl.mode === "railscard_bearer" ? (address as `0x${string}`) : (i.recipient as `0x${string}`);
       const args = [
@@ -100,6 +154,16 @@ export function useRailsActions() {
    */
   async function claimRailsCardSponsored(artifact: OpenRailsLinkArtifact): Promise<void> {
     if (!address) return setStatus({ id: "error", msg: "Connect a wallet first." });
+    
+    // Enforce switching to Arc Testnet
+    if (chainId !== arcTestnet.id) {
+      try {
+        await switchChainAsync({ chainId: arcTestnet.id });
+      } catch (err) {
+        return setStatus({ id: "error", msg: "Please switch your wallet network to Arc Testnet." });
+      }
+    }
+
     const pl = artifact.payload as RailsCardLinkPayload;
     try {
       setStatus({ id: "submitting" });
@@ -120,6 +184,16 @@ export function useRailsActions() {
   async function payRailsFlow(artifact: OpenRailsLinkArtifact): Promise<void> {
     if (!config) return setStatus({ id: "error", msg: "Config not loaded." });
     if (!address) return setStatus({ id: "error", msg: "Connect a wallet first." });
+    
+    // Enforce switching to Arc Testnet
+    if (chainId !== arcTestnet.id) {
+      try {
+        await switchChainAsync({ chainId: arcTestnet.id });
+      } catch (err) {
+        return setStatus({ id: "error", msg: "Please switch your wallet network to Arc Testnet." });
+      }
+    }
+
     const pl = artifact.payload as RailsFlowLinkPayload;
     if (pl.expiresAt && Date.now() / 1000 > pl.expiresAt) {
       return setStatus({ id: "error", msg: "This request link has expired." });
@@ -167,7 +241,7 @@ export function useRailsActions() {
       }
 
       setStatus({ id: "signing" });
-      const domain = buildOpenRailsDomain(chainId ?? arcTestnet.id, hub);
+      const domain = buildOpenRailsDomain(arcTestnet.id, hub);
       const message = {
         paycardId,
         metadataHash,
@@ -224,6 +298,16 @@ export function useRailsActions() {
   async function payRailsFlowSponsored(artifact: OpenRailsLinkArtifact): Promise<void> {
     if (!config) return setStatus({ id: "error", msg: "Config not loaded." });
     if (!address) return setStatus({ id: "error", msg: "Connect a wallet first." });
+    
+    // Enforce switching to Arc Testnet
+    if (chainId !== arcTestnet.id) {
+      try {
+        await switchChainAsync({ chainId: arcTestnet.id });
+      } catch (err) {
+        return setStatus({ id: "error", msg: "Please switch your wallet network to Arc Testnet." });
+      }
+    }
+
     const pl = artifact.payload as RailsFlowLinkPayload;
     if (pl.expiresAt && Date.now() / 1000 > pl.expiresAt) {
       return setStatus({ id: "error", msg: "This request link has expired." });
@@ -257,7 +341,7 @@ export function useRailsActions() {
       const paycardId = buildMetadataBoundPaycardId({ payer, nonceChannel: 0n, nonceValue, metadataHash });
 
       setStatus({ id: "signing" });
-      const domain = buildOpenRailsDomain(chainId ?? arcTestnet.id, hub);
+      const domain = buildOpenRailsDomain(arcTestnet.id, hub);
       const message = {
         paycardId,
         metadataHash,
@@ -307,7 +391,7 @@ export function useRailsActions() {
         token: usdc,
         spender: hub,
         value: totalAllocationPool,
-        chainId: chainId ?? arcTestnet.id,
+        chainId: arcTestnet.id,
       });
 
       setStatus({ id: "submitting" });

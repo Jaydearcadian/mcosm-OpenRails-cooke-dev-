@@ -52,3 +52,12 @@ experiments/traction-bots/metrics.json
 # Generated image assets (root-level scratch folder only — cockpit/public/assets/ is real, tracked source)
 /assets/
 
+# Local video/guides/logo assets
+experiments/demo-video-remotion/
+experiments/creator_streaming_demo_guide.md
+experiments/traction-bots/
+experiments/website_layout_and_narrative.md
+experiments/x402_showcase_guide.md
+experiments/Openrails-logo.jpg
+
+

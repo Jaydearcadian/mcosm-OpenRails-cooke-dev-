@@ -14,7 +14,7 @@
  *     (nonce, allowance) via wagmi's publicClient — no dependency on any Express server.
  */
 import { useState } from "react";
-import { useAccount, useSignTypedData, useWriteContract, usePublicClient } from "wagmi";
+import { useAccount, useSignTypedData, useWriteContract, usePublicClient, useSwitchChain } from "wagmi";
 import { USDC_ABI, HUB_ABI } from "./contracts";
 import { arcTestnet } from "./chain";
 import {
@@ -108,6 +108,7 @@ function buildIntentParts(p: NewPaymentParams, payer: `0x${string}`, usdcAddress
 
 export function useNewPayment(hubAddress: string, usdcAddress: string) {
   const { address, chainId } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
   const { signTypedDataAsync } = useSignTypedData();
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient();
@@ -129,7 +130,7 @@ export function useNewPayment(hubAddress: string, usdcAddress: string) {
       const lifespanSeconds = isOneTime ? 0n : BigInt(Math.round(parseFloat(p.lifespanSeconds!)));
       return createRailsFlowRequestLink({
         appBaseUrl: appBaseUrl(),
-        chainId: chainId ?? arcTestnet.id,
+        chainId: arcTestnet.id,
         vault: hubAddress,
         token: usdcAddress,
         metadataHash: randomPaycardId(), // advisory only for an unsigned request; real hash is rebuilt by the payer
@@ -149,6 +150,16 @@ export function useNewPayment(hubAddress: string, usdcAddress: string) {
     if (!address) throw new Error("Connect a wallet first.");
     const err = validate(p, hubAddress);
     if (err) throw new Error(err);
+
+    // Enforce switching to Arc Testnet
+    if (chainId !== arcTestnet.id) {
+      try {
+        await switchChainAsync({ chainId: arcTestnet.id });
+      } catch (err) {
+        throw new Error("Please switch your wallet network to Arc Testnet.");
+      }
+    }
+
     const payer = address as `0x${string}`;
     const { envelopeMode, signedRecipient, totalAllocationPool, flowVelocityPerSecond, lifespanSeconds, metadataHash } =
       buildIntentParts(p, payer, usdcAddress as `0x${string}`);
@@ -165,7 +176,7 @@ export function useNewPayment(hubAddress: string, usdcAddress: string) {
       : buildMetadataBoundPaycardId({ payer, nonceChannel, nonceValue, metadataHash });
     const genesisTimestamp = BigInt(Math.floor(Date.now() / 1000));
 
-    const domain = buildOpenRailsDomain(chainId ?? arcTestnet.id, hubAddress as `0x${string}`);
+    const domain = buildOpenRailsDomain(arcTestnet.id, hubAddress as `0x${string}`);
     const message = {
       paycardId,
       metadataHash,
@@ -178,7 +189,20 @@ export function useNewPayment(hubAddress: string, usdcAddress: string) {
       nonceChannel,
       nonceValue,
     } as const;
+    
+    setStatus({ id: "signing" });
     const sig = await signTypedDataAsync({ domain, types: OPENRAILS_EIP712_TYPES, primaryType: "SettlementIntent", message });
+
+    // Generate EIP-2612 permit so the card can be cleared gaslessly or self-claimed later
+    const permit = await signFlowPermit({
+      publicClient: publicClient!,
+      signTypedDataAsync,
+      owner: payer,
+      token: usdcAddress as `0x${string}`,
+      spender: hubAddress as `0x${string}`,
+      value: totalAllocationPool,
+      chainId: arcTestnet.id,
+    });
 
     const envelopeToken = serializeEnvelope({
       payerAddress: payer,
@@ -196,11 +220,14 @@ export function useNewPayment(hubAddress: string, usdcAddress: string) {
         nonceValue: Number(nonceValue),
       },
       mode: envelopeMode,
+      permit,
     });
+    
+    setStatus({ id: "idle" });
 
     return createRailsCardClaimLink({
       appBaseUrl: appBaseUrl(),
-      chainId: chainId ?? arcTestnet.id,
+      chainId: arcTestnet.id,
       vault: hubAddress,
       token: usdcAddress,
       metadataHash,
@@ -223,6 +250,15 @@ export function useNewPayment(hubAddress: string, usdcAddress: string) {
     const err = validate(p, hubAddress);
     if (err) return setStatus({ id: "error", msg: err });
 
+    // Enforce switching to Arc Testnet
+    if (chainId !== arcTestnet.id) {
+      try {
+        await switchChainAsync({ chainId: arcTestnet.id });
+      } catch (err) {
+        return setStatus({ id: "error", msg: "Please switch your wallet network to Arc Testnet." });
+      }
+    }
+
     const payer = address as `0x${string}`;
     const hub = hubAddress as `0x${string}`;
     const usdc = usdcAddress as `0x${string}`;
@@ -242,7 +278,7 @@ export function useNewPayment(hubAddress: string, usdcAddress: string) {
         : buildMetadataBoundPaycardId({ payer, nonceChannel, nonceValue, metadataHash });
       const genesisTimestamp = BigInt(Math.floor(Date.now() / 1000));
 
-      const domain = buildOpenRailsDomain(chainId ?? arcTestnet.id, hub);
+      const domain = buildOpenRailsDomain(arcTestnet.id, hub);
       const message = {
         paycardId,
         metadataHash,
@@ -283,7 +319,7 @@ export function useNewPayment(hubAddress: string, usdcAddress: string) {
           token: usdc,
           spender: hub,
           value: totalAllocationPool,
-          chainId: chainId ?? arcTestnet.id,
+          chainId: arcTestnet.id,
         });
 
         setStatus({ id: "submitting" });

@@ -54,6 +54,15 @@ export interface CryptographicEnvelopeV1 {
   };
   mode: OpenRailsEnvelopeMode;
   metadata?: CanonicalMetadataV1;
+  permit?: {
+    owner: string;
+    spender: string;
+    value: string;
+    deadline: number;
+    v: number;
+    r: string;
+    s: string;
+  };
 }
 
 // ---- EIP-712 ----------------------------------------------------------------

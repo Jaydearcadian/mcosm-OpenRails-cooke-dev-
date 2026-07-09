@@ -45,6 +45,15 @@ interface ClaimEnvelope {
     nonceValue: number;
   };
   mode: string; // railscard_bearer | railscard_recipient_bound | ...
+  permit?: {
+    owner: string;
+    spender: string;
+    value: string;
+    deadline: number;
+    v: number;
+    r: string;
+    s: string;
+  };
 }
 
 // Inverse of the cockpit/SDK serializeEnvelope (TextEncoder bytes → base64url).
@@ -174,6 +183,22 @@ export default {
     const provider = new ethers.JsonRpcProvider(env.ARC_RPC_URL);
     const signer = new ethers.Wallet(env.RECONCILIATION_SIGNER_KEY, provider);
     const hub = new ethers.Contract(env.OPENRAILS_HUB_ADDRESS, HUB_ABI, signer);
+
+    // Optional: land the payer's approval via permit (gasless for them) before claiming.
+    if (env0.permit) {
+      if (!env.ARC_USDC_ADDRESS) return jsonResponse({ error: "USDC address not configured for permit" }, 503);
+      const p = env0.permit;
+      const usdc = new ethers.Contract(env.ARC_USDC_ADDRESS, USDC_PERMIT_ABI, signer);
+      try {
+        await usdc.permit.staticCall(p.owner, p.spender, BigInt(p.value), BigInt(p.deadline), p.v, p.r, p.s);
+        const ptx = await usdc.permit(p.owner, p.spender, BigInt(p.value), BigInt(p.deadline), p.v, p.r, p.s);
+        await ptx.wait();
+        console.log(`[relay] claim permit landed for ${p.owner} (${ptx.hash})`);
+      } catch (error) {
+        // Permit might already be landed or expired, warn but don't fail yet
+        console.warn(`[relay] permit staticCall failed or already set for ${p.owner}: ${(error as Error).message}`);
+      }
+    }
 
     const fn = bearer ? "claimWildcardPaycardChannel" : "openPaycardChannel";
     const args = [

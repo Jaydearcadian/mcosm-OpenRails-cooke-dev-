@@ -13,7 +13,7 @@
  */
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import { useAccount, useReadContract } from "wagmi";
+import { useAccount, useReadContract, useSwitchChain } from "wagmi";
 import { USDC_ABI } from "../lib/contracts";
 
 const USDC = "0x3600000000000000000000000000000000000000";
@@ -31,7 +31,8 @@ function formatUsdc(raw: bigint | undefined): string {
 
 export function ConnectWalletButton({ style }: { style?: CSSProperties }) {
   const { ready, authenticated, login, logout } = usePrivy();
-  const { address } = useAccount();
+  const { address, chainId } = useAccount();
+  const { switchChain } = useSwitchChain();
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -82,17 +83,30 @@ export function ConnectWalletButton({ style }: { style?: CSSProperties }) {
   }
 
   if (authenticated && address) {
+    const isWrongNetwork = chainId !== 5042002;
     return (
       <div ref={wrapRef} style={{ position: "relative", display: "inline-block" }}>
-        <button
-          type="button"
-          onClick={() => setMenuOpen((v) => !v)}
-          style={{ ...base, background: "#04070D" }}
-          title={shortHex(address)}
-        >
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#00C878" }} />
-          <span>{shortHex(address)}</span>
-        </button>
+        {isWrongNetwork ? (
+          <button
+            type="button"
+            onClick={() => switchChain({ chainId: 5042002 })}
+            style={{ ...base, background: "#C73A3A" }}
+            title="Click to switch to Arc Testnet"
+          >
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#FFFFFF" }} />
+            <span>Switch to Arc</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            style={{ ...base, background: "#04070D" }}
+            title={shortHex(address)}
+          >
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#00C878" }} />
+            <span>{shortHex(address)}</span>
+          </button>
+        )}
 
         {menuOpen && (
           <div
