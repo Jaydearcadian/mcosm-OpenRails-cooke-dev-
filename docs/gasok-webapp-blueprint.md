@@ -242,3 +242,16 @@ Settlement recording is accepted only when:
 ### Deferred product scope
 
 Operational Gaia, arbitrary proof schemas, multi-party signing, production identity providers, Telegram delivery, PostgreSQL persistence and generalized Workspace/Path creation remain outside this first live vertical slice. The UI must continue labelling curated state separately from live GIWA and Runtime state.
+
+## v5 product-surface extension
+
+The GIWA System Lab is now one surface inside the wider OpenRails product web:
+
+- `/` preserves the original programmable settlement narrative and introduces the Runtime as the control layer around the rail.
+- `/system` remains the provable demonstration surface and is not the future account dashboard.
+- `/docs` provides the product and technical operating manual.
+- `/network` remains deployment evidence.
+- `/build` remains the integration and architecture entry point.
+- `/app` is reserved for the later account-centred dashboard.
+
+The reusable visual source of truth is stored at `packages/openrails-design-system` and is network-neutral.

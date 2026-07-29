@@ -15,14 +15,14 @@ export function Footer() {
       </div>
       <div className="footer-main">
         <div className="footer-statement">
-          <span className="tech-label">OPENRAILS / GIWA</span>
+          <span className="tech-label">OPENRAILS / COMPLETE SYSTEM</span>
           <h2>Authority made explicit.<br />Settlement made accountable.</h2>
-          <p>The control, agreement, and settlement plane for programmable commerce on GIWA.</p>
+          <p>Programmable settlement infrastructure for machine commerce—extended with explicit authority, agreement, evidence, and resolution.</p>
         </div>
         <div className="footer-links">
-          <div><span>SYSTEM</span><Link to="/system">Workspace</Link><Link to="/system">Path</Link><Link to="/system">Pact</Link><Link to="/system">Proof</Link><Link to="/system">Gaia</Link></div>
-          <div><span>BUILD</span><Link to="/build">Runtime</Link><Link to="/build">SDK</Link><Link to="/build">MCP</Link><Link to="/build">Telegram</Link></div>
-          <div><span>GIWA</span><Link to="/network">Network status</Link><Link to="/network">Contracts</Link><a href={GIWA.explorerUrl} target="_blank" rel="noreferrer">Explorer ↗</a></div>
+          <div><span>SYSTEM</span><Link to="/system">System Lab</Link><Link to="/docs/workspace-path">Workspace & Path</Link><Link to="/docs/pact">Pact</Link><Link to="/docs/proof-gaia">Proof & Gaia</Link></div>
+          <div><span>BUILD</span><Link to="/build">Architecture</Link><Link to="/docs/agent-kernel">Agent Kernel</Link><Link to="/docs/railsflow">RailsFlow</Link><Link to="/docs/security">Security</Link></div>
+          <div><span>REFERENCE</span><Link to="/docs/overview">Documentation</Link><Link to="/docs/networks">Network adapters</Link><Link to="/network">GIWA deployment</Link><a href={GIWA.explorerUrl} target="_blank" rel="noreferrer">Explorer ↗</a></div>
         </div>
       </div>
       <div className="footer-status">

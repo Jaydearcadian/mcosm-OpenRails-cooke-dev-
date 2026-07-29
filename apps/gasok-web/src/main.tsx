@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Link, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { GIWA } from './data/giwa';
-import { CinematicHero } from './components/CinematicHero';
-import { LifecycleStory } from './components/LifecycleStory';
+import { NarrativeHome } from './components/NarrativeHome';
+import { SystemNarrativeIntro } from './components/SystemNarrativeIntro';
+import { Docs } from './components/Docs';
 import { SystemMap } from './components/SystemMap';
 import { RuntimeArchitecture } from './components/RuntimeArchitecture';
 import { Footer } from './components/Footer';
@@ -34,7 +35,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <ScrollToTop />
       <header className={`control-strip ${compact ? 'is-compact' : ''}`}>
         <Link className="brand" to="/" aria-label="OpenRails home"><span className="brand-mark">OR</span><span>OPENRAILS</span></Link>
-        <nav aria-label="Primary navigation"><NavLink to="/system">SYSTEM</NavLink><NavLink to="/network">NETWORK</NavLink><NavLink to="/build">BUILD</NavLink></nav>
+        <nav aria-label="Primary navigation"><NavLink to="/system">SYSTEM</NavLink><NavLink to="/network">NETWORK</NavLink><NavLink to="/build">BUILD</NavLink><NavLink to="/docs">DOCS</NavLink></nav>
         <div className="network-control"><span><i /> GIWA / SEPOLIA</span><button type="button" onClick={() => void connect()}>{connecting ? 'CONNECTING' : address ? `${address.slice(0, 6)}…${address.slice(-4)}` : 'CONNECT'}</button></div>
       </header>
       {children}
@@ -44,8 +45,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function Home() {
-  const navigate = useNavigate();
-  return <main><CinematicHero onViewNetwork={() => navigate('/network')} /><LifecycleStory /><SystemMap /></main>;
+  return <NarrativeHome />;
 }
 
 function LiveNetworkAccount() {
@@ -116,7 +116,14 @@ function Build() {
 }
 
 function App() {
-  return <Shell><Routes><Route path="/" element={<Home />} /><Route path="/system" element={<main><LiveVerticalSlice /><SystemMap direct /></main>} /><Route path="/network" element={<Network />} /><Route path="/build" element={<Build />} /></Routes></Shell>;
+  return <Shell><Routes>
+    <Route path="/" element={<Home />} />
+    <Route path="/system" element={<main><SystemNarrativeIntro /><div id="live-system-run"><LiveVerticalSlice /></div><SystemMap direct /></main>} />
+    <Route path="/network" element={<Network />} />
+    <Route path="/build" element={<Build />} />
+    <Route path="/docs" element={<Docs />} />
+    <Route path="/docs/:slug" element={<Docs />} />
+  </Routes></Shell>;
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><WalletProvider><BrowserRouter><App /></BrowserRouter></WalletProvider></React.StrictMode>);

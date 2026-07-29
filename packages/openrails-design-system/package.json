@@ -1,0 +1,14 @@
+{
+  "name": "@openrails/design-system",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tokens.css": "./tokens.css",
+    "./theme": {
+      "types": "./theme.d.ts",
+      "default": "./theme.js"
+    }
+  },
+  "files": ["tokens.css", "theme.js", "theme.d.ts", "README.md"]
+}
