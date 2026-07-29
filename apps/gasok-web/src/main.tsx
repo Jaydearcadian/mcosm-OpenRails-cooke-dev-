@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { GIWA } from './data/giwa';
 import { NarrativeHome } from './components/NarrativeHome';
@@ -14,9 +14,19 @@ import { WalletProvider, useWallet } from './lib/wallet';
 import { claimOrUsd, formatNative, formatOrUsd, readLiveAccount, type LiveAccount } from './lib/openrails';
 import './styles.css';
 
-function ScrollToTop() {
+function RouteReset() {
   const { pathname } = useLocation();
-  useEffect(() => window.scrollTo({ top: 0, behavior: 'auto' }), [pathname]);
+  useLayoutEffect(() => {
+    if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    window.scrollTo(0, 0);
+    const frame = window.requestAnimationFrame(() => {
+      window.scrollTo(0, 0);
+      document.getElementById('route-content')?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pathname]);
   return null;
 }
 
@@ -32,9 +42,9 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="app-shell">
-      <ScrollToTop />
+      <RouteReset />
       <header className={`control-strip ${compact ? 'is-compact' : ''}`}>
-        <Link className="brand" to="/" aria-label="OpenRails home"><span className="brand-mark">OR</span><span>OPENRAILS</span></Link>
+        <Link className="brand" to="/" aria-label="Return to the OpenRails homepage" title="Return to homepage"><span className="brand-mark">OR</span><span>OPENRAILS</span></Link>
         <nav aria-label="Primary navigation"><NavLink to="/system">SYSTEM</NavLink><NavLink to="/network">NETWORK</NavLink><NavLink to="/build">BUILD</NavLink><NavLink to="/docs">DOCS</NavLink></nav>
         <div className="network-control"><span><i /> GIWA / SEPOLIA</span><button type="button" onClick={() => void connect()}>{connecting ? 'CONNECTING' : address ? `${address.slice(0, 6)}…${address.slice(-4)}` : 'CONNECT'}</button></div>
       </header>
@@ -115,15 +125,25 @@ function Build() {
   );
 }
 
+function AppRoutes() {
+  const location = useLocation();
+  return (
+    <div id="route-content" className="route-surface" tabIndex={-1} key={location.pathname}>
+      <Routes location={location}>
+        <Route path="/" element={<Home />} />
+        <Route path="/system" element={<main><SystemNarrativeIntro /><div id="live-system-run"><LiveVerticalSlice /></div><SystemMap direct /></main>} />
+        <Route path="/network" element={<Network />} />
+        <Route path="/build" element={<Build />} />
+        <Route path="/docs" element={<Docs />} />
+        <Route path="/docs/:slug" element={<Docs />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </div>
+  );
+}
+
 function App() {
-  return <Shell><Routes>
-    <Route path="/" element={<Home />} />
-    <Route path="/system" element={<main><SystemNarrativeIntro /><div id="live-system-run"><LiveVerticalSlice /></div><SystemMap direct /></main>} />
-    <Route path="/network" element={<Network />} />
-    <Route path="/build" element={<Build />} />
-    <Route path="/docs" element={<Docs />} />
-    <Route path="/docs/:slug" element={<Docs />} />
-  </Routes></Shell>;
+  return <Shell><AppRoutes /></Shell>;
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><WalletProvider><BrowserRouter><App /></BrowserRouter></WalletProvider></React.StrictMode>);

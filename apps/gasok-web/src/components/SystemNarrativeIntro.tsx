@@ -6,7 +6,7 @@ export function SystemNarrativeIntro() {
       <div className="system-narrative-copy">
         <span className="tech-label">SYSTEM LAB / PROVABLE DEMONSTRATION</span>
         <h1>One economic action.<br /><span>Every boundary made visible.</span></h1>
-        <p>This surface demonstrates how a proposal becomes authorised, committed, proven, and settled—while an over-limit action stops before Pact formation, wallet confirmation, or value movement.</p>
+        <p>This surface demonstrates how a proposal becomes authorised, committed, proven, and settled. An over-limit action stops before Pact formation, wallet confirmation, or value movement.</p>
         <div><a href="#live-system-run">Run the lifecycle ↓</a><Link to="/docs/overview">Read the operating model</Link></div>
       </div>
       <div className="system-narrative-comparison">
