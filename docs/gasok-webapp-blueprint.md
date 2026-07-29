@@ -144,3 +144,101 @@ BindingChain
 8. Mobile and reduced-motion behaviours exist.
 9. GIWA config is centralised.
 10. TypeScript/Vite build succeeds once dependencies are installed.
+
+## Cinematic v3 implementation lock
+
+The homepage lifecycle is one persistent scroll stage, not seven independent marketing sections. Scroll position advances a single system environment through:
+
+```text
+Actors bind → Workspace stabilises → Path extends → Baphomet evaluates
+→ Pact seals → Proof checkpoints verify → STN-Delta routes
+→ Gaia branches and rectifies
+```
+
+The direct system includes:
+
+- lifecycle playback;
+- timestamped activity events;
+- event-to-object focus;
+- Permitted, Blocked, and Rectified routes;
+- an optional complete binding-chain overlay.
+
+Every route terminates in the canonical OpenRails footer with:
+
+```text
+OWN → AUTHORISE → COMMIT → PROVE → SETTLE → RESOLVE
+```
+
+The header compresses after scroll to preserve content hierarchy.
+
+## Operational v4 vertical slice
+
+The direct `/system` route contains one real, bounded testnet lifecycle in addition to the curated system map.
+
+```text
+Connect wallet
+→ authenticate a short-lived same-origin session
+→ claim or inspect orUSD
+→ sign and persist Workspace authority
+→ sign and persist Agent registration
+→ install the GIWA receipt verifier under a signed Workspace command
+→ sign and activate Path
+→ submit 420 orUSD proposal
+→ Baphomet ALLOW
+→ form and sign Pact
+→ approve orUSD and sign RailsFlow EIP-712 intent
+→ open Paycard on GIWA
+→ verify exact PaycardProvisioned receipt and registry state
+→ sign activation-milestone Proof
+→ verify Proof against the matching GIWA Paycard receipt
+→ wait for the accelerated 30-second earning horizon
+→ submit settlement from the wallet
+→ verify SettlementFlushed and canonical Paycard state
+→ record final Pact settlement
+```
+
+The negative control submits `1,420 orUSD` against a Path with a `1,000 orUSD` maximum. Acceptance requires:
+
+```text
+Baphomet result = BLOCK
+Pact formed = false
+Financial effect = none
+No wallet transaction requested
+```
+
+### Live safety profile
+
+- Network: GIWA Sepolia only.
+- Settlement asset: test-only orUSD.
+- Live allocation: 420 orUSD.
+- Live duration: 30 seconds.
+- Live velocity: 14 orUSD/second.
+- Counterparty: connected wallet itself.
+- Residual recipient: connected wallet itself.
+- Kernel: prepares, evaluates, verifies, and records only.
+- Wallet: signs typed data and broadcasts every financial transaction.
+- Gateway: same-origin, wallet-session authenticated, rate-limited and route-whitelisted.
+- State: dedicated JSON file under `artifacts/giwa-agent-kernel`, written with mode `0600`.
+
+### Canonical evidence rules
+
+Opening activation is accepted only when:
+
+1. the GIWA transaction succeeded;
+2. the receipt contains `PaycardProvisioned` for the exact Paycard ID;
+3. the live Vault registry matches payer, recipient, metadata, allocation, velocity, lifespan and residual recipient;
+4. the Paycard is active and funded.
+
+The first Proof checkpoint is an **activation milestone**, not a claim that arbitrary commercial work was completed. Its verifier confirms that the supplied GIWA receipt contains the matching canonical Paycard opening event.
+
+Settlement recording is accepted only when:
+
+1. at least one Proof decision for the Pact is `approved`;
+2. the GIWA transaction succeeded;
+3. `SettlementFlushed` matches the exact Pact Paycard and amount;
+4. the live registry determines whether settlement is final;
+5. the Runtime observation matches the Pact’s immutable payment terms.
+
+### Deferred product scope
+
+Operational Gaia, arbitrary proof schemas, multi-party signing, production identity providers, Telegram delivery, PostgreSQL persistence and generalized Workspace/Path creation remain outside this first live vertical slice. The UI must continue labelling curated state separately from live GIWA and Runtime state.

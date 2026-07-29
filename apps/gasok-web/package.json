@@ -1,11 +1,17 @@
 {
   "name": "openrails-gasok-web",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "predev": "npm run build:kernel",
+    "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:web": "vite --host 0.0.0.0",
+    "dev:api": "OPENRAILS_GASOK_PORT=4174 node server/index.mjs --api-only",
+    "build:kernel": "npm --prefix ../../agent-kernel run build",
+    "build": "npm run build:kernel && tsc -b && vite build",
+    "prestart": "npm run build:kernel",
+    "start": "node server/index.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false"
   },
@@ -21,6 +27,7 @@
   "devDependencies": {
     "@types/react": "^18.3.4",
     "@types/react-dom": "^18.3.0",
+    "concurrently": "^8.2.2",
     "typescript": "^5.5.4"
   }
 }
