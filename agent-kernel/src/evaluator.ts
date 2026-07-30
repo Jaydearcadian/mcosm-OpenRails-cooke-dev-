@@ -143,7 +143,11 @@ export async function evaluateProposal(
 
   const uniqueReasons = [...new Set(reasons)];
   const result: BaphometDecisionV1["result"] = uniqueReasons.length === 0 ? "ALLOW" : "BLOCK";
-  const evidenceHash = hashCanonical({ proposal, identity, snapshot });
+  const evidenceHash = hashCanonical(
+    identity
+      ? { proposal, identity, snapshot }
+      : { proposal, snapshot },
+  );
   const evaluatedAt = nowIso(now);
   const decisionCore = {
     proposalId: proposal.proposalId,

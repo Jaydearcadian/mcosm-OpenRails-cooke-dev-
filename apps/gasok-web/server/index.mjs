@@ -79,6 +79,16 @@ const vaultAbi = [
   ] },
 ];
 
+const paycardProvisionedEvent = vaultAbi.find(
+  (entry) =>
+    entry.type === 'event' &&
+    entry.name === 'PaycardProvisioned'
+);
+
+if (!paycardProvisionedEvent) {
+  throw new Error('PaycardProvisioned ABI is missing');
+}
+
 function implementationManifest() {
   return {
     version: 'openrails-verification-plugin-v1',
@@ -129,16 +139,61 @@ pluginRegistry.bind({
   },
 });
 
-async function readRegistry(paycardId) {
-  const value = await publicClient.readContract({ address: GIWA.vault, abi: vaultAbi, functionName: 'registry', args: [paycardId] });
+async function readRegistry(paycardId, blockNumber) {
+  const value = await publicClient.readContract({
+    address: GIWA.vault,
+    abi: vaultAbi,
+    functionName: 'registry',
+    args: [paycardId],
+    ...(blockNumber !== undefined ? { blockNumber } : {}),
+  });
   const [payer, recipient, metadataHash, totalAllocationPool, availableBalance, flowVelocityPerSecond, genesisTimestamp, lifespanSeconds, lastCheckpointEpoch, residualDeltaRecipient, operationalStatus] = value;
   return { payer, recipient, metadataHash, totalAllocationPool, availableBalance, flowVelocityPerSecond, genesisTimestamp, lifespanSeconds, lastCheckpointEpoch, residualDeltaRecipient, operationalStatus };
 }
 
+const rpcSleep = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function retryRpc(
+  label,
+  operation,
+  attempts = 30,
+  delayMilliseconds = 1_500,
+) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation(attempt);
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < attempts) {
+        await rpcSleep(delayMilliseconds);
+      }
+    }
+  }
+
+  const reason =
+    lastError instanceof Error
+      ? lastError.message
+      : String(lastError);
+
+  throw new Error(`${label} failed after ${attempts} attempts: ${reason}`);
+}
+
 const chainVerifier = {
   async verifyOpening({ metadataHash, paycardId, openingTxHash }) {
-    const receipt = await publicClient.getTransactionReceipt({ hash: openingTxHash });
-    if (receipt.status !== 'success') throw new Error('GIWA opening transaction reverted');
+    const receipt = await retryRpc(
+      'GIWA opening receipt',
+      () => publicClient.getTransactionReceipt({
+        hash: openingTxHash,
+      }),
+    );
+
+    if (receipt.status !== 'success') {
+      throw new Error('GIWA opening transaction reverted');
+    }
     let event;
     for (const log of receipt.logs) {
       if (log.address.toLowerCase() !== GIWA.vault.toLowerCase()) continue;
@@ -148,8 +203,42 @@ const chainVerifier = {
       } catch { /* unrelated log */ }
     }
     if (!event) throw new Error('PaycardProvisioned event was not found in the GIWA receipt');
-    const card = await readRegistry(paycardId);
-    const block = await publicClient.getBlock({ blockNumber: receipt.blockNumber });
+    const card = await retryRpc(
+      'GIWA opening state',
+      async () => {
+        const value = await readRegistry(
+          paycardId,
+          receipt.blockNumber,
+        );
+
+        if (
+          value.payer.toLowerCase() ===
+          ZERO_ADDRESS.toLowerCase()
+        ) {
+          throw new Error(
+            'Paycard state is not visible at the receipt block yet'
+          );
+        }
+
+        if (
+          value.metadataHash.toLowerCase() !==
+          metadataHash.toLowerCase()
+        ) {
+          throw new Error(
+            'Paycard metadata is not consistent yet'
+          );
+        }
+
+        return value;
+      },
+    );
+
+    const block = await retryRpc(
+      'GIWA opening block',
+      () => publicClient.getBlock({
+        blockHash: receipt.blockHash,
+      }),
+    );
     return {
       version: 'openrails-opening-observation-v1',
       transactionHash: receipt.transactionHash,
@@ -171,8 +260,16 @@ const chainVerifier = {
     };
   },
   async verifySettlement({ pact, txHash, settledAmountBaseUnits }) {
-    const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
-    if (receipt.status !== 'success') throw new Error('GIWA settlement transaction reverted');
+    const receipt = await retryRpc(
+      'GIWA settlement receipt',
+      () => publicClient.getTransactionReceipt({
+        hash: txHash,
+      }),
+    );
+
+    if (receipt.status !== 'success') {
+      throw new Error('GIWA settlement transaction reverted');
+    }
     if (!pact.openRails?.paycardId) throw new Error('Pact has no Paycard binding');
     let amount = 0n;
     for (const log of receipt.logs) {
@@ -183,8 +280,20 @@ const chainVerifier = {
       } catch { /* unrelated log */ }
     }
     if (amount.toString() !== settledAmountBaseUnits) throw new Error('GIWA settlement event amount does not match the requested observation');
-    const card = await readRegistry(pact.openRails.paycardId);
-    const block = await publicClient.getBlock({ blockNumber: receipt.blockNumber });
+    const card = await retryRpc(
+      'GIWA settlement state',
+      () => readRegistry(
+        pact.openRails.paycardId,
+        receipt.blockNumber,
+      ),
+    );
+
+    const block = await retryRpc(
+      'GIWA settlement block',
+      () => publicClient.getBlock({
+        blockHash: receipt.blockHash,
+      }),
+    );
     return {
       version: 'openrails-settlement-observation-v1',
       transactionHash: receipt.transactionHash,
@@ -533,6 +642,18 @@ async function api(req, res, requestUrl) {
       await kernel.runNextJob('gasok-web');
       job = (await kernel.getJob(submitted.job.jobId)) ?? job;
     }
+    if (job.state === 'failed') {
+      throw new Error(
+        `Baphomet evaluation failed: ${job.error ?? 'unknown evaluator error'}`
+      );
+    }
+
+    if (job.state === 'queued' || job.state === 'running') {
+      throw new Error(
+        `Baphomet evaluation did not complete. Job state: ${job.state}`
+      );
+    }
+
     const state = await kernel.state();
     const decisionId = job.result?.decisionId;
     const decision = typeof decisionId === 'string' ? state.decisions[decisionId] : undefined;
@@ -570,6 +691,89 @@ async function api(req, res, requestUrl) {
     if (draft.intent.genesisTimestamp !== input.genesisTimestamp || draft.intent.nonceChannel !== input.nonceChannel || draft.intent.nonceValue !== input.nonceValue) throw new Error('Payment nonce or timing does not match the server-issued draft');
     return send(res, 200, await kernel.bindOpenRailsPayment(input));
   }
+  if (
+    method === 'POST' &&
+    pathname === '/api/live/payments/recover-opening'
+  ) {
+    const pact = await assertPactSession(
+      input.pactId,
+      sessionAddress,
+    );
+
+    if (!pact.openRails?.paycardId) {
+      throw new Error(
+        'The Pact has no prepared Paycard to recover'
+      );
+    }
+
+    if (
+      pact.status === 'active' &&
+      pact.openRails.openingTxHash
+    ) {
+      return send(res, 200, {
+        pact,
+        openingTxHash: pact.openRails.openingTxHash,
+        paycardId: pact.openRails.paycardId,
+        genesisTimestamp:
+          pact.openRails.genesisTimestamp,
+        recovered: true,
+      });
+    }
+
+    const latestBlock = await retryRpc(
+      'latest GIWA block',
+      () => publicClient.getBlockNumber(),
+    );
+
+    const fromBlock =
+      latestBlock > 10_000n
+        ? latestBlock - 10_000n
+        : 0n;
+
+    const logs = await retryRpc(
+      'PaycardProvisioned event search',
+      () => publicClient.getLogs({
+        address: GIWA.vault,
+        event: paycardProvisionedEvent,
+        args: {
+          paycardId: pact.openRails.paycardId,
+        },
+        fromBlock,
+        toBlock: 'latest',
+      }),
+    );
+
+    const opening = logs.at(-1);
+
+    if (!opening?.transactionHash) {
+      throw new Error(
+        'No canonical Paycard opening was found for the prepared Pact'
+      );
+    }
+
+    const recoveredPact =
+      await kernel.bindOpenRailsPayment({
+        pactId: pact.pactId,
+        metadataHash: pact.openRails.metadataHash,
+        paycardId: pact.openRails.paycardId,
+        actor: sessionAddress,
+        openingTxHash: opening.transactionHash,
+      });
+
+    paymentDrafts.delete(
+      pact.openRails.paycardId.toLowerCase()
+    );
+
+    return send(res, 200, {
+      pact: recoveredPact,
+      openingTxHash: opening.transactionHash,
+      paycardId: pact.openRails.paycardId,
+      genesisTimestamp:
+        pact.openRails.genesisTimestamp,
+      recovered: true,
+    });
+  }
+
   if (method === 'POST' && pathname === '/api/live/payments/confirm-opening') {
     await assertPactSession(input.pactId, sessionAddress);
     if (!sameAddress(input.actor, sessionAddress)) throw new Error('Opening observer actor must match the authenticated wallet');

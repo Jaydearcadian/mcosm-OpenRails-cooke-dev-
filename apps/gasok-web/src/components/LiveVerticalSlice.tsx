@@ -166,6 +166,40 @@ export function LiveVerticalSlice() {
     finally { setBusy(''); }
   }
 
+  async function waitForCanonicalReceipt(hash: Hash) {
+    const deadline = Date.now() + 120_000;
+    let lastError: unknown;
+
+    while (Date.now() < deadline) {
+      try {
+        const receipt =
+          await publicClient.getTransactionReceipt({ hash });
+
+        if (receipt.status !== 'success') {
+          throw new Error(
+            `Transaction ${hash} reverted on GIWA`
+          );
+        }
+
+        return receipt;
+      } catch (value) {
+        lastError = value;
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, 1_500)
+        );
+      }
+    }
+
+    const reason =
+      lastError instanceof Error
+        ? lastError.message
+        : String(lastError);
+
+    throw new Error(
+      `GIWA receipt was not consistently available after 120 seconds: ${reason}`
+    );
+  }
+
   const claim = () => run('claim', async () => {
     const accountAddress = address ?? await connect();
     const client = await walletClient();
@@ -275,11 +309,93 @@ export function LiveVerticalSlice() {
   const openPayment = () => run('open', async () => {
     if (!address || !memory?.pactId) throw new Error('Create and sign a Pact first.');
     await ensureSession();
-    const currentPact = pact ?? await api<Pact>(`/api/live/pacts/${memory.pactId}`);
+    const currentPact = await api<Pact>(
+      `/api/live/pacts/${memory.pactId}`
+    );
     if (!currentPact) throw new Error('The Pact could not be loaded.');
     if (!['accepted', 'payment_prepared', 'awaiting_wallet'].includes(currentPact.status)) throw new Error(`Pact is not ready for payment opening (${currentPact.status}).`);
     setPact(currentPact);
-    if (!account || account.orUsdBalance < LIVE_ALLOCATION) throw new Error('Claim test orUSD before opening the Paycard.');
+
+    if (
+      ['payment_prepared', 'awaiting_wallet'].includes(
+        currentPact.status
+      ) &&
+      currentPact.openRails?.paycardId
+    ) {
+      add(
+        'Checking GIWA for a previously submitted Paycard opening',
+        'GIWA',
+        'pending',
+      );
+
+      try {
+        const recovered = await api<{
+          pact: Pact;
+          openingTxHash: Hash;
+          paycardId: Hex;
+          genesisTimestamp: number;
+        }>('/api/live/payments/recover-opening', {
+          method: 'POST',
+          body: JSON.stringify({
+            pactId: memory.pactId,
+          }),
+        });
+
+        setPact(recovered.pact);
+
+        setMemory((current) =>
+          current
+            ? {
+                ...current,
+                paycardId: recovered.paycardId,
+                openingTxHash:
+                  recovered.openingTxHash,
+                genesisTimestamp:
+                  recovered.genesisTimestamp,
+                phase: 'opened',
+              }
+            : current
+        );
+
+        add(
+          `Canonical opening recovered · ${short(
+            recovered.openingTxHash
+          )}`,
+          'GIWA',
+        );
+
+        await refreshAccount();
+        return;
+      } catch (value) {
+        const message =
+          value instanceof Error
+            ? value.message
+            : String(value);
+
+        if (
+          !message.includes(
+            'No canonical Paycard opening was found'
+          )
+        ) {
+          throw value;
+        }
+
+        add(
+          'No prior canonical opening found; preparing a new wallet action',
+          'KERNEL',
+          'pending',
+        );
+      }
+    }
+
+    if (
+      !account ||
+      account.orUsdBalance < LIVE_ALLOCATION
+    ) {
+      throw new Error(
+        'Claim test orUSD before opening the Paycard.'
+      );
+    }
     const client = await walletClient();
     add('Checking orUSD allowance', 'WALLET', 'pending');
     const approval = await ensureApproval(client, publicClient, address, LIVE_ALLOCATION);
@@ -292,7 +408,7 @@ export function LiveVerticalSlice() {
     add('RailsFlow prepared; wallet confirmation required', 'KERNEL');
     const hash = await client.writeContract({ account: address, address: GIWA.contracts.vault, abi: vaultAbi, functionName: 'openPaycardChannel', args: [draft.paycardId, draft.metadataHash, draft.intent.recipient, BigInt(draft.intent.totalAllocationPool), BigInt(draft.intent.flowVelocityPerSecond), BigInt(draft.intent.genesisTimestamp), BigInt(draft.intent.lifespanSeconds), draft.intent.residualDeltaRecipient, envelopeSignature, BigInt(draft.intent.nonceChannel), BigInt(draft.intent.nonceValue), address] });
     add(`Paycard opening submitted · ${short(hash)}`, 'WALLET', 'pending');
-    await publicClient.waitForTransactionReceipt({ hash });
+    await waitForCanonicalReceipt(hash);
     const activePact = await api<Pact>('/api/live/payments/confirm-opening', { method: 'POST', body: JSON.stringify({ pactId: memory.pactId, metadataHash: draft.metadataHash, paycardId: draft.paycardId, actor: address, openingTxHash: hash }) });
     setPact(activePact);
     setMemory((current) => current ? { ...current, paycardId: draft.paycardId, openingTxHash: hash, genesisTimestamp: draft.intent.genesisTimestamp, phase: 'opened' } : current);
@@ -327,7 +443,7 @@ export function LiveVerticalSlice() {
     const client = await walletClient();
     add('Settlement transaction submitted', 'WALLET', 'pending');
     const hash = await client.writeContract({ account: address, address: GIWA.contracts.vault, abi: vaultAbi, functionName: 'processDripSettle', args: [memory.paycardId] });
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const receipt = await waitForCanonicalReceipt(hash);
     const amount = settledAmount(receipt, memory.paycardId);
     if (amount === 0n) throw new Error('No settlement amount was emitted. Wait for the flow window and retry.');
     const card = await publicClient.readContract({ address: GIWA.contracts.vault, abi: vaultAbi, functionName: 'registry', args: [memory.paycardId] });
