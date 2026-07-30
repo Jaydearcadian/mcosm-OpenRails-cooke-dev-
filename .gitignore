@@ -62,3 +62,6 @@ experiments/Openrails-logo.jpg
 /artifacts/giwa-agent-kernel/
 
 agent-kernel/dist-test/
+
+# TypeScript incremental build caches
+*.tsbuildinfo
