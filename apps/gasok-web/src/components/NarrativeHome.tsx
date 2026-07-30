@@ -1,6 +1,7 @@
 import { motion, useReducedMotion, useScroll, useSpring, useTransform } from 'framer-motion';
 import { useRef, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { ACTIVE_NETWORK } from '../data/network';
 
 const railControls = [
   ['ALLOCATION', '420 orUSD'],
@@ -53,7 +54,7 @@ export function NarrativeHome() {
             <a className="primary" href="#open-the-rail">See how the rail works <b>↓</b></a>
             <Link to="/system">Enter the System Lab</Link>
           </motion.div>
-          <motion.div className="narrative-evidence" initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: .6, delay: .48 }}><i /> LIVE DEPLOYMENT · GIWA SEPOLIA · CHAIN 91342</motion.div>
+          <motion.div className="narrative-evidence" initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: .6, delay: .48 }}><i /> LIVE DEPLOYMENT · {ACTIVE_NETWORK.displayLabel} · CHAIN {ACTIVE_NETWORK.chainId}</motion.div>
         </motion.div>
         <motion.div className="rail-hero-visual" aria-label="A bounded 420 orUSD OpenRails allocation" style={{ y: heroVisualY }} initial={reduceMotion ? false : { opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 1, delay: .16, ease: [0.22, 1, 0.36, 1] }}>
           <div className="rail-hero-head"><span>RAIL / 018</span><strong>PROGRAMMABLE ALLOCATION</strong></div>
@@ -159,7 +160,7 @@ export function NarrativeHome() {
         <div className="context-strip">{['WORKSPACE 01', 'PATH 04 / REV 07', 'PROPOSAL 018', 'BAPHOMET ALLOW', 'PACT 2048', 'PROOF APPROVED'].map((item, index) => <motion.span key={item} initial={reduceMotion ? false : { opacity: .2, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: index * .08 }}>{item}</motion.span>)}</div>
         <div className="settlement-rail"><span>PAYER</span><i><motion.b animate={reduceMotion ? { left: '50%' } : { left: ['2%', '92%'] }} transition={{ duration: 5, ease: 'linear', repeat: Infinity }} /><motion.em animate={reduceMotion ? undefined : { scaleX: [0, 1], opacity: [.15, .8] }} transition={{ duration: 5, ease: 'linear', repeat: Infinity }} /></i><span>RECIPIENT</span></div>
         <div className="settlement-economics"><Reveal><span>RAILSFLOW</span><strong>VELOCITY CONTROLLED SETTLEMENT</strong></Reveal><Reveal delay={.08}><span>PAYCARD</span><strong>CANONICAL FINANCIAL STATE</strong></Reveal><Reveal delay={.16}><span>STN-DELTA</span><strong>EARNED / RESIDUAL ROUTING</strong></Reveal></div>
-        <motion.div className="receipt-sheet" initial={reduceMotion ? false : { opacity: 0, rotate: -1.5, y: 38 }} whileInView={{ opacity: 1, rotate: -.3, y: 0 }} viewport={{ once: true, amount: .3 }} transition={{ duration: .85 }}><span>GIWA RECEIPT</span><div><small>CHAIN</small><strong>91342</strong></div><div><small>ALLOCATION</small><strong>420 orUSD</strong></div><div><small>STATUS</small><strong>CONFIRMED</strong></div><div><small>PROVENANCE</small><strong><i /> LIVE ON GIWA</strong></div></motion.div>
+        <motion.div className="receipt-sheet" initial={reduceMotion ? false : { opacity: 0, rotate: -1.5, y: 38 }} whileInView={{ opacity: 1, rotate: -.3, y: 0 }} viewport={{ once: true, amount: .3 }} transition={{ duration: .85 }}><span>{ACTIVE_NETWORK.shortName} RECEIPT</span><div><small>CHAIN</small><strong>{ACTIVE_NETWORK.chainId}</strong></div><div><small>ALLOCATION</small><strong>420 orUSD</strong></div><div><small>STATUS</small><strong>CONFIRMED</strong></div><div><small>PROVENANCE</small><strong><i /> LIVE ON {ACTIVE_NETWORK.shortName}</strong></div></motion.div>
       </section>
 
       <section className="resolution-architecture">
@@ -170,7 +171,7 @@ export function NarrativeHome() {
           <motion.i animate={reduceMotion ? undefined : { y: [0, 8, 0] }} transition={{ duration: 2.6, repeat: Infinity }}>↓</motion.i>
           <Reveal delay={.08}><article><span>SETTLEMENT PROTOCOL</span><strong>RailsCard · RailsFlow · Paycard · Vault · STN-Delta</strong><p>Moves value through bounded, wallet authorised rails.</p></article></Reveal>
           <motion.i animate={reduceMotion ? undefined : { y: [0, 8, 0] }} transition={{ duration: 2.6, repeat: Infinity, delay: .2 }}>↓</motion.i>
-          <Reveal delay={.16}><article><span>NETWORK</span><strong>GIWA today · Arc and other deployments through adapters</strong><p>Preserves canonical contract events and transaction receipts.</p></article></Reveal>
+          <Reveal delay={.16}><article><span>NETWORK</span><strong>{ACTIVE_NETWORK.shortName} today · Arc and other deployments through adapters</strong><p>Preserves canonical contract events and transaction receipts.</p></article></Reveal>
         </div>
       </section>
 

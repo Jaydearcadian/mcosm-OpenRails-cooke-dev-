@@ -74,30 +74,34 @@ function ProtocolRuntimeDiagram() {
 
 function RailsCardDiagram() {
   return (
-    <div className="diagram-railscard">
+    <div className="diagram-railscard-v52">
       <Node eyebrow="OWNER WALLET" title="MACRO BUDGET" detail="1,000 orUSD" />
-      <Arrow label="EIP-2612 / approval" />
-      <div className="railscard-shell">
+      <Arrow label="bounded approval" />
+      <div className="railscard-shell v52">
         <span>RAILSCARD / AUTHORITY ENVELOPE</span>
-        <div className="railscard-meter"><i style={{ width: '42%' }} /><b>420 COMMITTED</b></div>
-        <div className="railscard-rules"><span>ASSET / orUSD</span><span>EXPIRY / 30 MIN</span><span>COUNTERPARTY / BOUNDED</span><span>REMAINING / 580</span></div>
+        <div className="railscard-meter"><i style={{ width: '60%' }} /><b>600 COMMITTED · 400 REMAINING</b></div>
+        <div className="railscard-rules"><span>ASSET / orUSD</span><span>EXPIRY / 30 MIN</span><span>COUNTERPARTY / VERIFIED</span><span>ACTOR / COMMERCE OPERATOR</span></div>
+        <div className="railscard-child-flows"><Node eyebrow="FLOW 018" title="420" detail="orUSD" tone="signal" /><Node eyebrow="FLOW 019" title="180" detail="orUSD" /><Node eyebrow="NEXT REQUEST" title="≤ 400" detail="AVAILABLE" tone="dark" /></div>
       </div>
-      <Arrow label="authorises individual flow" />
-      <Node eyebrow="MICRO ACTION" title="RAILSFLOW / 018" detail="420 orUSD" tone="signal" />
     </div>
   );
 }
 
 function RailsFlowDiagram() {
+  const stages = [
+    ['01', 'PREPARE', 'Runtime builds exact typed intent'],
+    ['02', 'REVIEW', 'Wallet displays all bound fields'],
+    ['03', 'SIGN', 'User approves the exact intent'],
+    ['04', 'BROADCAST', 'Wallet submits to the configured network'],
+    ['05', 'OPEN', 'Protocol emits canonical Paycard state'],
+  ];
   return (
-    <div className="diagram-railsflow">
+    <div className="diagram-railsflow-v52">
       <div className="railsflow-fields">
         {['PAYER', 'RECIPIENT', 'PAYCARD ID', 'ALLOCATION', 'START / EXPIRY', 'NONCE LANE', 'METADATA HASH'].map((field, index) => <span key={field}><i>0{index + 1}</i>{field}</span>)}
       </div>
-      <Arrow label="typed intent" />
-      <Node eyebrow="WALLET" title="VISIBLE SIGNATURE" detail="NO RUNTIME KEY" tone="signal" />
-      <Arrow label="broadcast" />
-      <Node eyebrow="PROTOCOL" title="OPEN PAYCARD" detail="CANONICAL STATE" tone="dark" />
+      <div className="railsflow-stage-track">{stages.map(([index, title, detail], stageIndex) => <div key={title}><span>{index}</span><strong>{title}</strong><small>{detail}</small>{stageIndex < stages.length - 1 && <i aria-hidden="true">→</i>}</div>)}</div>
+      <div className="railsflow-boundary-note"><Node eyebrow="WALLET BOUNDARY" title="VISIBLE SIGNATURE" detail="NO RUNTIME KEY" tone="signal" /><Node eyebrow="CANONICAL RESULT" title="OPEN PAYCARD" detail="CONFIRMED RECEIPT" tone="dark" /></div>
     </div>
   );
 }
@@ -110,24 +114,29 @@ function NonceLaneDiagram() {
         {Array.from({ length: 25 }, (_, index) => {
           const row = Math.floor(index / 5);
           const col = index % 5;
-          const active = row === 4 && col < 4;
-          return <span key={index} className={active ? 'active' : ''}><i>{col}</i>{active ? 'USED' : 'OPEN'}</span>;
+          const primary = row === 4 && col < 4;
+          const parallel = row === 2 && col < 2;
+          const active = primary || parallel;
+          return <span key={index} className={primary ? 'active' : parallel ? 'parallel' : ''}><i>{col}</i>{active ? 'USED' : 'OPEN'}</span>;
         })}
       </div>
-      <div className="nonce-caption"><strong>LANE 04</strong><span>Independent sequence: 0, 1, 2, 3</span><small>Other activities advance without colliding with this rail.</small></div>
+      <div className="nonce-caption"><strong>PARALLEL LANES</strong><span>Lane 04: 0, 1, 2, 3</span><span>Lane 02: 0, 1</span><small>A delayed action in one lane does not stall the other. Every intent still binds to one exact lane and sequence.</small></div>
     </div>
   );
 }
 
 function StnDeltaDiagram() {
   return (
-    <div className="diagram-delta">
-      <Node eyebrow="ALLOCATED" title="420" detail="orUSD" tone="dark" />
-      <div className="delta-split"><i /><b>STN-DELTA</b><i /></div>
-      <div className="delta-destinations">
-        <Node eyebrow="EARNED" title="210" detail="TO RECIPIENT" tone="signal" />
-        <Node eyebrow="RESIDUAL" title="210" detail="BACK TO PAYER" />
+    <div className="diagram-delta-v52">
+      <div className="diagram-delta">
+        <Node eyebrow="ALLOCATED" title="420" detail="orUSD" tone="dark" />
+        <div className="delta-split"><i /><b>STN-DELTA</b><i /></div>
+        <div className="delta-destinations">
+          <Node eyebrow="EARNED" title="210" detail="TO RECIPIENT" tone="signal" />
+          <Node eyebrow="RESIDUAL" title="210" detail="BACK TO PAYER" />
+        </div>
       </div>
+      <p><strong>DEMONSTRATION OUTCOME</strong> The 210 and 210 split is not a fixed protocol percentage. Actual routing depends on the bound earning horizon, proof state, and close condition.</p>
     </div>
   );
 }
