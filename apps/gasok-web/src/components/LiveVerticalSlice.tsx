@@ -33,6 +33,7 @@ import {
   type PaycardVerificationDecision,
 } from './paycard/PaycardInstrument';
 import './paycard/paycard.css';
+import { RecordedRunView } from './RecordedRunView';
 
 type Phase = 'idle' | 'funded' | 'authority' | 'allowed' | 'pact' | 'opened' | 'proved' | 'settled';
 type Activity = { at: string; label: string; source: 'WALLET' | 'KERNEL' | 'BAPHOMET' | 'GIWA' | 'PROOF'; status: 'pending' | 'complete' | 'error' };
@@ -139,6 +140,8 @@ export function LiveVerticalSlice() {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [remaining, setRemaining] = useState(0);
+  const [runMode, setRunMode] =
+    useState<'live' | 'recorded'>('live');
 
   const add = useCallback((label: string, source: Activity['source'], status: Activity['status'] = 'complete') => {
     setActivity((current) => [{ at: nowLabel(), label, source, status }, ...current].slice(0, 14));
@@ -755,6 +758,35 @@ export function LiveVerticalSlice() {
         <p>Testnet-only, wallet-confirmed and self-recipient by default. The Runtime never receives a private key and every financial transition is confirmed through the connected wallet.</p>
       </div>
 
+      <div
+        className="live-mode-switch"
+        role="tablist"
+        aria-label="System Lab run mode"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={runMode === 'live'}
+          className={runMode === 'live' ? 'active' : ''}
+          onClick={() => setRunMode('live')}
+        >
+          LIVE RUN
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={runMode === 'recorded'}
+          className={runMode === 'recorded' ? 'active' : ''}
+          onClick={() => setRunMode('recorded')}
+        >
+          RECORDED RUN
+        </button>
+      </div>
+
+      {runMode === 'recorded' ? (
+        <RecordedRunView />
+      ) : (
+        <>
       <div className="live-account-strip">
         <div className="live-account-identity"><span>CONNECTED AUTHORITY</span><strong>{address ? short(address) : 'NOT CONNECTED'}</strong><small>{chainId !== GIWA.chainId ? 'WALLET CONNECTION REQUIRED' : sessionAddress ? 'GIWA / LIVE API AUTHENTICATED' : 'GIWA / SIGN SESSION ON FIRST ACTION'}</small></div>
         {accountSummary.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
@@ -813,6 +845,8 @@ export function LiveVerticalSlice() {
       </div>
 
       <div className="live-boundary"><span>AUTHORIZATION BOUNDARY</span><strong>Kernel prepares and verifies</strong><i>→</i><strong>Wallet signs and broadcasts</strong><i>→</i><strong>GIWA finalises</strong></div>
+        </>
+      )}
     </section>
   );
 }
