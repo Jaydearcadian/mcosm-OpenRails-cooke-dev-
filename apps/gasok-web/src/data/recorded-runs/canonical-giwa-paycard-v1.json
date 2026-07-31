@@ -1,0 +1,394 @@
+{
+  "version": "openrails-recorded-run-v1",
+  "fixtureId": "canonical-giwa-paycard-v1",
+  "mode": "recorded",
+  "canonical": true,
+  "title": "Canonical GIWA Paycard",
+  "description": "A completed 420 orUSD programmable settlement lifecycle recorded on GIWA Sepolia.",
+  "source": {
+    "kernelStateVersion": "openrails-agent-kernel-state-v1",
+    "pactId": "pact-1785421350762",
+    "recordedAt": "2026-07-30T14:24:00.841Z"
+  },
+  "network": {
+    "name": "GIWA Sepolia",
+    "chainId": 91342,
+    "explorerBaseUrl": "https://sepolia-explorer.giwa.io",
+    "vault": "0x623daf607A0C8F841a72012BCE19cfe9E5fbAbf1",
+    "token": "0x162BCaEb04D4c82403c925d3AC9bEC8FFc1C07De"
+  },
+  "lifecycle": {
+    "status": "settled",
+    "stages": [
+      "Own",
+      "Authorise",
+      "Commit",
+      "Prove",
+      "Settle",
+      "Resolve"
+    ],
+    "createdAt": "2026-07-30T14:22:30.321Z",
+    "settledAt": "2026-07-30T14:24:00.841Z"
+  },
+  "authority": {
+    "workspaceId": "gasok-38a5ef31",
+    "agentId": "agent-38a5ef31",
+    "path": {
+      "artifact": {
+        "version": "openrails-path-v1",
+        "pathId": "path-38a5ef31",
+        "workspaceId": "gasok-38a5ef31",
+        "owner": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+        "authorityAccount": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+        "authorizedAgentIds": [
+          "agent-38a5ef31"
+        ],
+        "permittedActions": [
+          "open_payment",
+          "submit_checkpoint"
+        ],
+        "permittedAssets": [
+          "0x162BCaEb04D4c82403c925d3AC9bEC8FFc1C07De"
+        ],
+        "permittedCounterparties": [
+          "0x38a5ef31569aa22fc960596f17ff16097e89b9f5"
+        ],
+        "identityRequirements": [
+          {
+            "provider": "none",
+            "requirement": "self-settlement test route",
+            "required": false
+          }
+        ],
+        "approvedVerificationPlugins": [
+          {
+            "pluginId": "giwa_receipt_v1",
+            "version": "1.0.0"
+          }
+        ],
+        "limits": {
+          "maxPerPactBaseUnits": "1000000000",
+          "maxActiveExposureBaseUnits": "1000000000",
+          "maxPerPeriodBaseUnits": "2500000000",
+          "periodSeconds": 86400,
+          "maxVelocityBaseUnitsPerSecond": "50000000",
+          "maxDurationSeconds": 90,
+          "maxConcurrentPacts": 1
+        },
+        "authorityMode": "confirmed_execution",
+        "validFrom": "2026-07-30T10:50:44.735Z",
+        "expiresAt": "2026-07-31T10:51:44.735Z",
+        "status": "active",
+        "revision": 1,
+        "createdAt": "2026-07-30T10:51:44.735Z",
+        "updatedAt": "2026-07-30T10:51:44.735Z"
+      },
+      "hash": "0x6212a8485bd42063cd1e465a3a9d50f248487e0b50feb391964144c95d37d820",
+      "typedData": {
+        "domain": {
+          "name": "OpenRails Agent Kernel",
+          "version": "1",
+          "chainId": 91342,
+          "verifyingContract": "0x623daf607A0C8F841a72012BCE19cfe9E5fbAbf1"
+        },
+        "primaryType": "OpenRailsPath",
+        "types": {
+          "OpenRailsPath": [
+            {
+              "name": "workspaceIdHash",
+              "type": "bytes32"
+            },
+            {
+              "name": "pathIdHash",
+              "type": "bytes32"
+            },
+            {
+              "name": "authorityAccount",
+              "type": "address"
+            },
+            {
+              "name": "revision",
+              "type": "uint256"
+            },
+            {
+              "name": "authorityModeHash",
+              "type": "bytes32"
+            },
+            {
+              "name": "pathHash",
+              "type": "bytes32"
+            },
+            {
+              "name": "expiresAtHash",
+              "type": "bytes32"
+            }
+          ]
+        },
+        "message": {
+          "workspaceIdHash": "0x7953749488e7b3cb53cf421a878fd504683295f514a8fb511542f68807f40f9c",
+          "pathIdHash": "0xe35a6c3074b1b2467d6c22e6a0e1fc08bd710d8e380293c622de8df9a4326cd3",
+          "authorityAccount": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+          "revision": 1,
+          "authorityModeHash": "0x384ca0a4f41899571d2ab5e4b328faf9661640ffbd4fe89cc7d9c1a7d2b47ca3",
+          "pathHash": "0x6212a8485bd42063cd1e465a3a9d50f248487e0b50feb391964144c95d37d820",
+          "expiresAtHash": "0xacb381ff75b86009c701782d43bd45a1d9bbb3e4f682485ddb65a0e29fdc955a"
+        }
+      },
+      "signer": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+      "signedAt": "2026-07-30T10:52:03.281Z"
+    },
+    "proposal": {
+      "version": "openrails-agent-proposal-v1",
+      "proposalId": "proposal-allow-1785421348098",
+      "workspaceId": "gasok-38a5ef31",
+      "pathId": "path-38a5ef31",
+      "agentId": "agent-38a5ef31",
+      "actionType": "open_payment",
+      "counterparty": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+      "asset": "0x162BCaEb04D4c82403c925d3AC9bEC8FFc1C07De",
+      "requestedAllocationBaseUnits": "420000000",
+      "requestedVelocityBaseUnitsPerSecond": "14000000",
+      "requestedDurationSeconds": 30,
+      "specification": {
+        "route": "gasok-live-self-settlement",
+        "checkpoint": "giwa_transaction_receipt"
+      },
+      "evidencePolicyId": "giwa_receipt_v1",
+      "requestedAt": "2026-07-30T14:22:28.098Z",
+      "idempotencyKey": "proposal-allow-1785421348098:v1"
+    },
+    "decision": {
+      "version": "openrails-baphomet-decision-v1",
+      "decisionId": "decision_3cceddecf0540b5d",
+      "proposalId": "proposal-allow-1785421348098",
+      "proposalHash": "0xf95dece787aaf79ca0054969195c87d8e61a46ce37775134f0dbecb7db599c69",
+      "workspaceId": "gasok-38a5ef31",
+      "pathId": "path-38a5ef31",
+      "pathHash": "0x6212a8485bd42063cd1e465a3a9d50f248487e0b50feb391964144c95d37d820",
+      "result": "ALLOW",
+      "reasonCodes": [],
+      "policySnapshot": {
+        "activeExposureBaseUnits": "0",
+        "periodSpentBaseUnits": "840000000",
+        "activePacts": 0
+      },
+      "evidenceHash": "0xb961f928b2c2294ac0de2e39023d2cb4411af47642e244779871287145fc8c46",
+      "evaluatedAt": "2026-07-30T14:22:30.321Z",
+      "summary": "Proposal is inside the active signed Path.",
+      "decisionHash": "0x3cceddecf0540b5dd5ec03e10ab6849c12e1b685aa0e0d69b6ed78a619c35da1"
+    },
+    "outcome": "ALLOW"
+  },
+  "agreement": {
+    "pactId": "pact-1785421350762",
+    "pathId": "path-38a5ef31",
+    "pathRevision": 1,
+    "pathHash": "0x6212a8485bd42063cd1e465a3a9d50f248487e0b50feb391964144c95d37d820",
+    "proposalId": "proposal-allow-1785421348098",
+    "proposalHash": "0xf95dece787aaf79ca0054969195c87d8e61a46ce37775134f0dbecb7db599c69",
+    "decisionId": "decision_3cceddecf0540b5d",
+    "decisionHash": "0x3cceddecf0540b5dd5ec03e10ab6849c12e1b685aa0e0d69b6ed78a619c35da1",
+    "termsHash": "0x2552987e5fed7c58e980505fcf4455af9a31063d465f206fe617740cca89788f",
+    "actionType": "open_payment",
+    "specification": {
+      "route": "gasok-live-self-settlement",
+      "checkpoint": "giwa_transaction_receipt"
+    },
+    "commercialTerms": {
+      "title": "Accelerated GIWA settlement demonstration",
+      "amount": "420 orUSD",
+      "durationSeconds": 30,
+      "recipientMode": "self-settlement test route",
+      "proofRule": "canonical Paycard activation milestone"
+    },
+    "paymentTerms": {
+      "chainId": 91342,
+      "vault": "0x623daf607A0C8F841a72012BCE19cfe9E5fbAbf1",
+      "token": "0x162BCaEb04D4c82403c925d3AC9bEC8FFc1C07De",
+      "payer": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+      "recipient": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+      "maximumAllocationBaseUnits": "420000000",
+      "velocityBaseUnitsPerSecond": "14000000",
+      "lifespanSeconds": 30,
+      "residualRecipient": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5"
+    },
+    "evidencePolicy": {
+      "id": "giwa_receipt_v1",
+      "version": "1.0.0",
+      "codeDigest": "0x8c58000fd7dc73b49347b4854cb8a23b2c260175b682b7d312fd81b9a67fb356"
+    },
+    "completionPolicyId": "receipt-gated-settlement-v1",
+    "disputePolicyId": "gaia-v1"
+  },
+  "paycard": {
+    "paycardId": "0x50af122ac00e34f5eb1b64a7b0ea4f9b73f13f22d9ed44ec33f5c762d3a240da",
+    "metadataHash": "0x98019768d8b5d6337c9e780c4bb0a16fd289fcb6d8be77b84e5a43513b140681",
+    "genesisTimestamp": 1785421390,
+    "nonceChannel": 0,
+    "nonceValue": 3,
+    "preparedAt": "2026-07-30T14:23:15.268Z",
+    "opening": {
+      "version": "openrails-opening-observation-v1",
+      "transactionHash": "0x58771ae6cee660eb9e98e6190910bd95116f100689a0dfd5757a736f385c3ab5",
+      "chainId": 91342,
+      "vault": "0x623daf607A0C8F841a72012BCE19cfe9E5fbAbf1",
+      "paycardId": "0x50af122ac00e34f5eb1b64a7b0ea4f9b73f13f22d9ed44ec33f5c762d3a240da",
+      "metadataHash": "0x98019768d8b5d6337c9e780c4bb0a16fd289fcb6d8be77b84e5a43513b140681",
+      "payer": "0x38a5eF31569aA22Fc960596F17ff16097E89B9F5",
+      "recipient": "0x38a5eF31569aA22Fc960596F17ff16097E89B9F5",
+      "residualRecipient": "0x38a5eF31569aA22Fc960596F17ff16097E89B9F5",
+      "poolAllocationBaseUnits": "420000000",
+      "flowVelocityBaseUnitsPerSecond": "14000000",
+      "genesisTimestamp": 1785421390,
+      "lifespanSeconds": 30,
+      "availableBalanceBaseUnits": "420000000",
+      "operationalStatus": 0,
+      "blockNumber": 32076286,
+      "observedAt": "2026-07-30T14:23:22.000Z"
+    },
+    "settlement": {
+      "version": "openrails-settlement-observation-v1",
+      "transactionHash": "0x3286301c2f8f33508d97479a72252fe1dff79621c5f06cf314a26bc969ff4fe5",
+      "chainId": 91342,
+      "vault": "0x623daf607A0C8F841a72012BCE19cfe9E5fbAbf1",
+      "paycardId": "0x50af122ac00e34f5eb1b64a7b0ea4f9b73f13f22d9ed44ec33f5c762d3a240da",
+      "recipient": "0x38a5eF31569aA22Fc960596F17ff16097E89B9F5",
+      "settledAmountBaseUnits": "420000000",
+      "final": true,
+      "blockNumber": 32076321,
+      "observedAt": "2026-07-30T14:23:57.000Z"
+    }
+  },
+  "proof": {
+    "checkpoint": {
+      "version": "openrails-work-checkpoint-v1",
+      "checkpointId": "checkpoint-1785421411496",
+      "workspaceId": "gasok-38a5ef31",
+      "pactId": "pact-1785421350762",
+      "pathId": "path-38a5ef31",
+      "paycardId": "0x50af122ac00e34f5eb1b64a7b0ea4f9b73f13f22d9ed44ec33f5c762d3a240da",
+      "termsHash": "0x2552987e5fed7c58e980505fcf4455af9a31063d465f206fe617740cca89788f",
+      "actor": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+      "counterparty": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+      "checkpointIndex": 1,
+      "checkpointType": "milestone",
+      "evidenceType": "giwa_transaction_receipt",
+      "evidenceHash": "0x58771ae6cee660eb9e98e6190910bd95116f100689a0dfd5757a736f385c3ab5",
+      "evidenceUri": "https://sepolia-explorer.giwa.io/tx/0x58771ae6cee660eb9e98e6190910bd95116f100689a0dfd5757a736f385c3ab5",
+      "observedAt": "2026-07-30T14:23:31.496Z",
+      "validUntil": "2026-07-30T14:33:31.496Z",
+      "submittedBy": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5"
+    },
+    "verification": {
+      "version": "openrails-verification-decision-v1",
+      "decisionId": "verify_5c586e69523ff358",
+      "workspaceId": "gasok-38a5ef31",
+      "pactId": "pact-1785421350762",
+      "checkpointId": "checkpoint-1785421411496",
+      "pluginId": "giwa_receipt_v1",
+      "pluginVersion": "1.0.0",
+      "decision": "approved",
+      "reasonCodes": [
+        "GIWA_PAYCARD_RECEIPT_CONFIRMED"
+      ],
+      "evidenceHash": "0x58771ae6cee660eb9e98e6190910bd95116f100689a0dfd5757a736f385c3ab5",
+      "sourceCommitmentHash": "0x58771ae6cee660eb9e98e6190910bd95116f100689a0dfd5757a736f385c3ab5",
+      "evaluatedAt": "2026-07-30T14:23:35.089Z",
+      "decisionHash": "0x5c586e69523ff3581ef694170500ad156b197bc73645ade9fe87db7abb3cfc3d"
+    }
+  },
+  "timeline": [
+    {
+      "sequence": 0,
+      "type": "PACT_CREATED",
+      "actor": "agent-38a5ef31",
+      "at": "2026-07-30T14:22:30.321Z",
+      "data": {
+        "proposalId": "proposal-allow-1785421348098",
+        "proposalHash": "0xf95dece787aaf79ca0054969195c87d8e61a46ce37775134f0dbecb7db599c69",
+        "decisionId": "decision_3cceddecf0540b5d",
+        "decisionHash": "0x3cceddecf0540b5dd5ec03e10ab6849c12e1b685aa0e0d69b6ed78a619c35da1",
+        "termsHash": "0x2552987e5fed7c58e980505fcf4455af9a31063d465f206fe617740cca89788f"
+      }
+    },
+    {
+      "sequence": 1,
+      "type": "PACT_ACCEPTED",
+      "actor": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+      "at": "2026-07-30T14:22:38.738Z",
+      "data": {
+        "termsHash": "0x2552987e5fed7c58e980505fcf4455af9a31063d465f206fe617740cca89788f",
+        "signers": [
+          "0x38a5ef31569aa22fc960596f17ff16097e89b9f5"
+        ]
+      }
+    },
+    {
+      "sequence": 2,
+      "type": "PAYMENT_PREPARED",
+      "actor": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+      "at": "2026-07-30T14:23:15.268Z",
+      "data": {
+        "termsHash": "0x2552987e5fed7c58e980505fcf4455af9a31063d465f206fe617740cca89788f",
+        "metadataHash": "0x98019768d8b5d6337c9e780c4bb0a16fd289fcb6d8be77b84e5a43513b140681",
+        "paycardId": "0x50af122ac00e34f5eb1b64a7b0ea4f9b73f13f22d9ed44ec33f5c762d3a240da",
+        "genesisTimestamp": 1785421390,
+        "nonceChannel": 0,
+        "nonceValue": 3,
+        "allocationBaseUnits": "420000000"
+      }
+    },
+    {
+      "sequence": 3,
+      "type": "PAYMENT_OPENED_CANONICAL",
+      "actor": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+      "at": "2026-07-30T14:23:25.652Z",
+      "data": {
+        "termsHash": "0x2552987e5fed7c58e980505fcf4455af9a31063d465f206fe617740cca89788f",
+        "metadataHash": "0x98019768d8b5d6337c9e780c4bb0a16fd289fcb6d8be77b84e5a43513b140681",
+        "paycardId": "0x50af122ac00e34f5eb1b64a7b0ea4f9b73f13f22d9ed44ec33f5c762d3a240da",
+        "openingTxHash": "0x58771ae6cee660eb9e98e6190910bd95116f100689a0dfd5757a736f385c3ab5",
+        "blockNumber": 32076286,
+        "allocationBaseUnits": "420000000"
+      }
+    },
+    {
+      "sequence": 4,
+      "type": "CHECKPOINT_SUBMITTED",
+      "actor": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+      "at": "2026-07-30T14:23:31.496Z",
+      "data": {
+        "checkpointId": "checkpoint-1785421411496",
+        "checkpointType": "milestone",
+        "evidenceHash": "0x58771ae6cee660eb9e98e6190910bd95116f100689a0dfd5757a736f385c3ab5",
+        "termsHash": "0x2552987e5fed7c58e980505fcf4455af9a31063d465f206fe617740cca89788f"
+      }
+    },
+    {
+      "sequence": 5,
+      "type": "CHECKPOINT_APPROVED",
+      "actor": "plugin:giwa_receipt_v1",
+      "at": "2026-07-30T14:23:35.089Z",
+      "data": {
+        "checkpointId": "checkpoint-1785421411496",
+        "decisionId": "verify_5c586e69523ff358",
+        "reasonCodes": [
+          "GIWA_PAYCARD_RECEIPT_CONFIRMED"
+        ]
+      }
+    },
+    {
+      "sequence": 6,
+      "type": "PACT_SETTLED_CANONICAL",
+      "actor": "0x38a5ef31569aa22fc960596f17ff16097e89b9f5",
+      "at": "2026-07-30T14:24:00.841Z",
+      "data": {
+        "termsHash": "0x2552987e5fed7c58e980505fcf4455af9a31063d465f206fe617740cca89788f",
+        "txHash": "0x3286301c2f8f33508d97479a72252fe1dff79621c5f06cf314a26bc969ff4fe5",
+        "paycardId": "0x50af122ac00e34f5eb1b64a7b0ea4f9b73f13f22d9ed44ec33f5c762d3a240da",
+        "settledAmountBaseUnits": "420000000",
+        "blockNumber": 32076321
+      }
+    }
+  ]
+}

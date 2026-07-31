@@ -1,0 +1,230 @@
+.live-mode-switch {
+  display: inline-flex;
+  margin: 26px 0 8px;
+  padding: 4px;
+  border: 1px solid #0b0a09;
+  border-radius: 999px;
+  background: #f4f0e8;
+}
+
+.live-mode-switch button {
+  min-height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #0b0a09;
+  font-family: var(--font-mono, "Doto", monospace);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  cursor: pointer;
+}
+
+.live-mode-switch button.active {
+  background: #0b0a09;
+  color: #fff;
+}
+
+.live-mode-switch button:focus-visible {
+  outline: 2px solid #d96543;
+  outline-offset: 3px;
+}
+
+.recorded-run {
+  margin-top: 24px;
+  padding: clamp(24px, 4vw, 44px);
+  border: 1px solid #0b0a09;
+  background: #f4f0e8;
+  color: #0b0a09;
+}
+
+.recorded-run-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  padding-bottom: 26px;
+  border-bottom: 1px solid #d8d4cc;
+}
+
+.recorded-run-header span,
+.recorded-run-header small,
+.recorded-run-notice,
+.recorded-run-evidence span,
+.recorded-run-evidence code,
+.recorded-run-timeline span,
+.recorded-run-timeline small,
+.recorded-run-timeline code {
+  font-family: var(--font-mono, "Doto", monospace);
+}
+
+.recorded-run-header > div:first-child > span {
+  color: #d96543;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.recorded-run-header h3 {
+  margin: 10px 0 12px;
+  font-family: var(--font-sans, "Inter Tight", sans-serif);
+  font-size: clamp(30px, 5vw, 58px);
+  font-weight: 500;
+  line-height: 0.95;
+}
+
+.recorded-run-header p {
+  max-width: 700px;
+  margin: 0;
+  color: #5b5650;
+  line-height: 1.55;
+}
+
+.recorded-run-state {
+  min-width: 180px;
+  padding: 16px;
+  border: 1px solid #0b0a09;
+  text-align: right;
+}
+
+.recorded-run-state span,
+.recorded-run-state small {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.recorded-run-state strong {
+  display: block;
+  margin: 8px 0;
+  color: #d96543;
+  font-size: 22px;
+}
+
+.recorded-run-notice {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 22px 0;
+  padding: 14px 16px;
+  border-left: 3px solid #d96543;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.recorded-run-evidence {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 34px;
+  border-top: 1px solid #0b0a09;
+  border-left: 1px solid #0b0a09;
+}
+
+.recorded-run-evidence article {
+  min-width: 0;
+  padding: 18px;
+  border-right: 1px solid #0b0a09;
+  border-bottom: 1px solid #0b0a09;
+}
+
+.recorded-run-evidence span,
+.recorded-run-evidence strong,
+.recorded-run-evidence code,
+.recorded-run-evidence a {
+  display: block;
+}
+
+.recorded-run-evidence span {
+  margin-bottom: 14px;
+  color: #6f6860;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.recorded-run-evidence strong {
+  margin-bottom: 8px;
+  font-size: 17px;
+}
+
+.recorded-run-evidence code,
+.recorded-run-evidence a {
+  overflow: hidden;
+  color: #d96543;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recorded-run-timeline {
+  margin-top: 34px;
+  border-top: 1px solid #0b0a09;
+}
+
+.recorded-run-timeline-heading {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.recorded-run-timeline ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recorded-run-timeline li {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid #d8d4cc;
+}
+
+.recorded-run-timeline li > span {
+  color: #d96543;
+  font-size: 11px;
+}
+
+.recorded-run-timeline li div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recorded-run-timeline li strong {
+  font-size: 13px;
+}
+
+.recorded-run-timeline li small,
+.recorded-run-timeline li code {
+  color: #6f6860;
+  font-size: 10px;
+}
+
+@media (max-width: 780px) {
+  .recorded-run-header,
+  .recorded-run-notice {
+    flex-direction: column;
+  }
+
+  .recorded-run-state {
+    width: 100%;
+    text-align: left;
+  }
+
+  .recorded-run-evidence {
+    grid-template-columns: 1fr;
+  }
+
+  .recorded-run-timeline li {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .recorded-run-timeline li code {
+    grid-column: 2;
+  }
+}
