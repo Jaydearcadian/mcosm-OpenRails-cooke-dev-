@@ -1,0 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Doto:wght@500;700&family=Inter+Tight:wght@400;500;600&display=swap');
+
+:root {
+  --or-canvas: #f3f1ec;
+  --or-surface: #ffffff;
+  --or-ink: #0b0a09;
+  --or-dark: #4e4b47;
+  --or-muted: #9c9992;
+  --or-line: #d8d4cc;
+  --or-line-soft: #ebe8e2;
+  --or-panel: #e8e5df;
+  --or-signal: #d96543;
+
+  /* Backward-compatible aliases used by the existing System Lab. */
+  --canvas: var(--or-canvas);
+  --surface: var(--or-surface);
+  --ink: var(--or-ink);
+  --dark: var(--or-dark);
+  --muted: var(--or-muted);
+  --line: var(--or-line);
+  --line-soft: var(--or-line-soft);
+  --panel: var(--or-panel);
+  --signal: var(--or-signal);
+
+  --or-font-editorial: 'Inter Tight', sans-serif;
+  --or-font-technical: 'Doto', monospace;
+  --or-radius-control: 11px;
+  --or-radius-panel: 22px;
+  --or-page-gutter: clamp(18px, 5vw, 82px);
+
+  font-family: var(--or-font-editorial);
+  color: var(--or-ink);
+  background: var(--or-canvas);
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+}
